@@ -112,3 +112,7 @@ See [Taskboard](examples/taskboard/README.md) for a local SQLite application wit
 ### Browser runtime preview
 
 `loom/assets/live.mjs` exports `attachLive(root, {endpoint, id, version, csrf})`. It sends same-origin JSON events from `button[data-live-event]`, handles stale versions without replay, and replaces the component subtree using validated DOM nodes, not HTML strings. Only a conservative fragment subset is supported. One event may be in flight; extra events are dropped. Applications must serve the module and bootstrap session configuration. Node tests use a DOM stub, not an actual browser. Focus preservation, server push, recovery and real browser acceptance remain outstanding.
+
+### Live Counter
+
+Run `racket examples/live-counter/app.rkt` and visit http://127.0.0.1:8080/. This localhost example serves the browser runtime, mounts independent session-owned counters and updates the component without navigation. HTTP smoke and Chromium acceptance tests are configured in CI. Reloading mounts a new instance; expired instances are reclaimed on subsequent registry access. Not production-ready.
