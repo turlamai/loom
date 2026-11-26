@@ -18,3 +18,14 @@ raco loom inspect --json
 raco loom test
 raco loom dev
 ```
+
+## HTML 组件
+
+```racket
+(require loom loom/html)
+(define-component (welcome name)
+  (element 'h1 "Hello, " name))
+(html-response (page-layout #:title "Welcome" (welcome "Racket")))
+```
+
+受限组件构造器校验元素、属性和 URL，拒绝脚本标签与事件属性。原始 `html-response` X-expression 仅供可信代码使用；本模块不是通用 HTML 清洗器，也不能代替完整安全策略。
