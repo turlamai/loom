@@ -90,3 +90,7 @@ Model declarations support required fields, basic types, unknown-field rejection
 ## Model repositories (development preview)
 
 `loom/repository` maps explicit models to existing SQLite tables with `make-repository`, `repository-insert!`, `repository-get`, `repository-update!`, `repository-delete!` and bounded `repository-list`. Supply an explicit required string or integer key; use migrations to create the table. Updates replace all non-key fields, absent optional fields become SQL NULL, and values are parameterized. No automatic ID generation, authorization, relationships or PostgreSQL repository support yet.
+
+## Full-stack example
+
+See [Taskboard](examples/taskboard/README.md) for a local SQLite application with real HTTP acceptance tests. Not a production multi-user deployment.
