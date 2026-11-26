@@ -78,3 +78,7 @@ raco loom dev
 `loom/session-http` 将服务端会话绑定到仅限当前主机的 Cookie，并为每个会话生成随机 CSRF 令牌。`start-web-session` 返回 ID、状态和 Cookie 响应头；应用显式附加响应头并在写操作前校验令牌。`end-web-session` 撤销会话并返回清除响应头。拒绝重复或畸形会话 Cookie。生产默认要求 HTTPS。该模块并非认证或自动中间件，应用仍需实施授权、令牌页面禁止缓存及所有相关写操作的 CSRF 校验。存储仍为单进程内存。
 
 `loom/csrf-middleware` 为非安全 HTTP 方法提供可选的 URL 编码表单防护，通过 `current-verified-form` 提供校验后的字段。安全方法必须只读；Taskboard 演示独立浏览器会话和禁止缓存响应。JSON API 需单独策略。
+
+## Live Components（运行时预览）
+
+`loom/live` 提供 `make-live-component`、`live-mount`、`live-snapshot` 和 `live-dispatch!`。组件定义初始状态工厂、纯渲染函数及显式事件处理器。实例独立维护版本并串行更新，过期版本和未知事件不修改状态，渲染失败不提交新状态。应使用不可变状态、执行时间有界且不重入同一实例的纯回调。浏览器通信、会话归属、生命周期限制和 DOM 更新尚未实现。
