@@ -7,10 +7,12 @@ pid=$!
 trap 'kill "$pid" 2>/dev/null || true; cat "$tmp/server.log"; rm -rf "$tmp"' EXIT
 base=http://127.0.0.1:18880
 for i in $(seq 1 40); do
-  if curl -fsS "$base/" >"$tmp/page"; then break; fi
+  if curl -fsS -c "$tmp/cookies" -D "$tmp/headers" "$base/" >"$tmp/page"; then break; fi
   sleep 1
 done
 grep -q 'Taskboard' "$tmp/page"
+grep -qi "^Cache-Control: no-store" "$tmp/headers"
+curl -fsS -c "$tmp/other" "$base/" >"$tmp/other-page"
 token=$(python3 - "$tmp/page" <<'PY'
 from html.parser import HTMLParser
 import sys
@@ -26,16 +28,18 @@ assert p.token
 print(p.token)
 PY
 )
-test "$(curl -s -o /dev/null -w '%{http_code}' -d 'title=bad' "$base/tasks")" = 403
-test "$(curl -s -o /dev/null -w '%{http_code}' --data-urlencode "csrf=$token" --data-urlencode 'title=Test <script>' "$base/tasks")" = 303
-curl -fsS "$base/" >"$tmp/page"
+test "$(curl -b "$tmp/cookies" -s -o /dev/null -w '%{http_code}' -d 'title=bad' "$base/tasks")" = 403
+test "$(curl -b "$tmp/other" -s -o /dev/null -w '%{http_code}' -d "csrf=$token&title=bad" "$base/tasks")" = 403
+test "$(curl -s -o /dev/null -w '%{http_code}' -d "csrf=$token&title=bad" "$base/tasks")" = 403
+test "$(curl -b "$tmp/cookies" -s -o /dev/null -w '%{http_code}' --data-urlencode "csrf=$token" --data-urlencode 'title=Test <script>' "$base/tasks")" = 303
+curl -b "$tmp/cookies" -fsS "$base/" >"$tmp/page"
 grep -q 'Test &lt;script&gt;' "$tmp/page"
 id=$(grep -oE '/tasks/[0-9a-f]{32}/toggle' "$tmp/page" | head -1 | cut -d/ -f3)
 test -n "$id"
-test "$(curl -s -o /dev/null -w '%{http_code}' -d "csrf=$token" "$base/tasks/$id/toggle")" = 303
-curl -fsS "$base/" | grep -q 'Done'
-test "$(curl -s -o /dev/null -w '%{http_code}' -d "csrf=$token" "$base/tasks/$id/delete")" = 303
-curl -fsS "$base/" >"$tmp/page"
+test "$(curl -b "$tmp/cookies" -s -o /dev/null -w '%{http_code}' -d "csrf=$token" "$base/tasks/$id/toggle")" = 303
+curl -b "$tmp/cookies" -fsS "$base/" | grep -q 'Done'
+test "$(curl -b "$tmp/cookies" -s -o /dev/null -w '%{http_code}' -d "csrf=$token" "$base/tasks/$id/delete")" = 303
+curl -b "$tmp/cookies" -fsS "$base/" >"$tmp/page"
 ! grep -q 'Test &lt;script&gt;' "$tmp/page"
-test "$(curl -s -o /dev/null -w '%{http_code}' "$base/tasks")" = 405
+test "$(curl -b "$tmp/cookies" -s -o /dev/null -w '%{http_code}' "$base/tasks")" = 405
 echo "Taskboard HTTP smoke passed"
