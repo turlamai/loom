@@ -67,3 +67,7 @@ The constrained builder accepts text and validated elements, rejects executable 
 ## Sessions
 
 `loom/session` provides a bounded, synchronized in-memory store with cryptographically random opaque IDs, absolute expiry, deletion and rotation. Use immutable session values; the store does not copy them. It is process-local and loses state on restart. Cookie binding, authentication, CSRF and distributed storage are not implemented here.
+
+## Database (development preview)
+
+`loom/db` wraps the official Racket database library with SQLite and PostgreSQL connection helpers, scoped connection cleanup, explicit transactions and parameterized queries. SQLite transaction commit and rollback are covered by unit tests; PostgreSQL integration, pooling and migrations are not yet verified. Keep credentials outside source code and configure TLS for production.
