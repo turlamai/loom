@@ -63,3 +63,7 @@ The constrained builder accepts text and validated elements, rejects executable 
 ## Cookies
 
 `loom/cookies` exposes `cookie-values`, `set-cookie-header` and `clear-cookie-header`. Cookies default to host-only, Secure, HttpOnly and SameSite=Lax. Duplicate valid request values remain visible; applications must reject ambiguous session cookies. Cookie values are not signed or encrypted by these helpers. Use HTTPS in production; explicit non-Secure cookies are for local development only.
+
+## Database (development preview)
+
+`loom/db` wraps the official Racket database library with SQLite and PostgreSQL connection helpers, scoped connection cleanup, explicit transactions and parameterized queries. SQLite transaction commit and rollback are covered by unit tests; PostgreSQL integration, pooling and migrations are not yet verified. Keep credentials outside source code and configure TLS for production.
