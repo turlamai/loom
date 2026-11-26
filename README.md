@@ -75,3 +75,14 @@ The constrained builder accepts text and validated elements, rejects executable 
 ## Migrations (development preview)
 
 `loom/migrate` applies consecutive numbered migrations in a transaction and records their versions and descriptions. Reapplying the same plan is a no-op; truncated or renamed histories are rejected. Run migrations from a single deployment process. Migration code is trusted and must not commit independently. This is not a checksum, down-migration or distributed locking mechanism. SQLite tests cover rollback; PostgreSQL requires integration verification.
+
+## Model schemas (development preview)
+
+```racket
+(require loom/model)
+(define-model user [name string #t] [age integer #f])
+(validate-model user (hasheq 'name "Alice")) ; => '()
+(model-schema user)
+```
+
+Model declarations support required fields, basic types, unknown-field rejection and JSON Schema metadata. They do not generate SQL, persist data, coerce input or enforce authorization. Define separate input/output schemas for sensitive fields.
