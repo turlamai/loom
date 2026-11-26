@@ -6,7 +6,7 @@
 (define void-tags '(meta link img input br hr))
 (define attrs '(id class title lang dir role name value type method action href src alt width height placeholder for checked disabled selected required autocomplete colspan rowspan scope charset content rel tabindex))
 (define (safe-url? s)
-  (and (not (regexp-match? #px"[\\x00-\\x20\\x7f]" s))
+  (and (for/and ([c (in-string s)]) (and (> (char->integer c) 32) (not (= (char->integer c) 127))))
        (not (string-contains? s "\\"))
        (not (string-prefix? s "//"))
        (or (not (regexp-match? #px"^[A-Za-z][A-Za-z0-9+.-]*:" s))
