@@ -33,3 +33,7 @@ raco loom dev
 ## HTTP 工具（开发预览）
 
 `loom/http` 提供 JSON 响应、带大小限制的 JSON 解析、保留重复值的查询参数及请求头读取，以及本地重定向。JSON 大小限制在服务器读取请求体之后生效，仍需独立设置传输层限制；解析异常需应用层处理。
+
+## 表单与安全中间件
+
+`loom/forms` 支持带大小限制的 URL 编码表单并保留重复字段；`loom/security` 提供可选的 `security-headers` 中间件，默认添加 CSP、防嵌入、nosniff 和 Referrer-Policy 响应头，并保留应用显式设置。尚不包含 CSRF、认证、TLS 或传输层限制。
