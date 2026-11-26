@@ -41,3 +41,7 @@ raco loom dev
 ## Cookie
 
 `loom/cookies` 提供读取、设置和删除 Cookie 的工具，默认仅限当前主机，启用 Secure、HttpOnly 和 SameSite=Lax。保留重复的合法请求值，应用需拒绝歧义会话 Cookie。该模块不签名或加密 Cookie；生产环境应使用 HTTPS，非 Secure 配置仅用于本地开发。
+
+## 数据库（开发预览）
+
+`loom/db` 复用 Racket 官方数据库库，提供 SQLite、PostgreSQL 连接、连接资源清理、显式事务及参数化查询。已添加 SQLite 提交与回滚测试；PostgreSQL 集成、连接池和迁移尚未验证。生产环境需配置 TLS，凭据不得写入源码。
