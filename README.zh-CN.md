@@ -53,3 +53,14 @@ raco loom dev
 ## 数据库迁移（开发预览）
 
 `loom/migrate` 在事务中按连续版本执行迁移，并记录版本和描述。重复执行相同计划不再应用，拒绝截断或修改描述的历史。迁移应由单一部署进程执行，迁移代码必须可信且不得自行提交事务。尚不支持内容校验和、向下迁移及分布式锁；SQLite 已添加回滚测试，PostgreSQL 待集成验证。
+
+## 数据模型（开发预览）
+
+```racket
+(require loom/model)
+(define-model user [name string #t] [age integer #f])
+(validate-model user (hasheq 'name "Alice")) ; => '()
+(model-schema user)
+```
+
+支持必填字段、基础类型、未知字段拒绝及 JSON Schema 元数据；尚不生成 SQL、不持久化、不自动转换输入、不承担授权。敏感字段应使用独立的输入和输出模型。
