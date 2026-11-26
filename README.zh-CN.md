@@ -76,3 +76,5 @@ raco loom dev
 ## Web 会话与 CSRF（开发预览）
 
 `loom/session-http` 将服务端会话绑定到仅限当前主机的 Cookie，并为每个会话生成随机 CSRF 令牌。`start-web-session` 返回 ID、状态和 Cookie 响应头；应用显式附加响应头并在写操作前校验令牌。`end-web-session` 撤销会话并返回清除响应头。拒绝重复或畸形会话 Cookie。生产默认要求 HTTPS。该模块并非认证或自动中间件，应用仍需实施授权、令牌页面禁止缓存及所有相关写操作的 CSRF 校验。存储仍为单进程内存。
+
+`loom/csrf-middleware` 为非安全 HTTP 方法提供可选的 URL 编码表单防护，通过 `current-verified-form` 提供校验后的字段。安全方法必须只读；Taskboard 演示独立浏览器会话和禁止缓存响应。JSON API 需单独策略。
