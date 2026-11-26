@@ -94,3 +94,7 @@ Model declarations support required fields, basic types, unknown-field rejection
 ## Full-stack example
 
 See [Taskboard](examples/taskboard/README.md) for a local SQLite application with real HTTP acceptance tests. Not a production multi-user deployment.
+
+## Web sessions and CSRF (development preview)
+
+`loom/session-http` binds opaque server-side sessions to host-only cookies and associates each session with a random CSRF token. `start-web-session` returns the ID, state and cookie header; applications explicitly attach headers and validate submitted tokens before mutations. `end-web-session` revokes the current session and returns a clearing header. Duplicate or malformed session cookie candidates are rejected. Production defaults require HTTPS. This is not authentication or automatic middleware; applications must enforce authorization, no-store caching for token-bearing responses, and CSRF validation on every relevant mutation. The store remains process-local.
