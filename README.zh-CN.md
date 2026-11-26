@@ -72,3 +72,7 @@ raco loom dev
 ## 全栈示例
 
 参阅 [Taskboard](examples/taskboard/README.zh-CN.md)，包含本地 SQLite 应用与真实 HTTP 验收测试，尚不适用于生产多用户部署。
+
+## Web 会话与 CSRF（开发预览）
+
+`loom/session-http` 将服务端会话绑定到仅限当前主机的 Cookie，并为每个会话生成随机 CSRF 令牌。`start-web-session` 返回 ID、状态和 Cookie 响应头；应用显式附加响应头并在写操作前校验令牌。`end-web-session` 撤销会话并返回清除响应头。拒绝重复或畸形会话 Cookie。生产默认要求 HTTPS。该模块并非认证或自动中间件，应用仍需实施授权、令牌页面禁止缓存及所有相关写操作的 CSRF 校验。存储仍为单进程内存。
