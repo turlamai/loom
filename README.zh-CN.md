@@ -41,3 +41,7 @@ raco loom dev
 ## Cookie
 
 `loom/cookies` 提供读取、设置和删除 Cookie 的工具，默认仅限当前主机，启用 Secure、HttpOnly 和 SameSite=Lax。保留重复的合法请求值，应用需拒绝歧义会话 Cookie。该模块不签名或加密 Cookie；生产环境应使用 HTTPS，非 Secure 配置仅用于本地开发。
+
+## 会话
+
+`loom/session` 提供有容量限制、同步访问的内存会话存储，支持安全随机 ID、绝对过期、删除与轮换。应使用不可变会话数据，存储不会复制对象。重启会丢失会话，不支持跨进程共享；Cookie 绑定、认证、CSRF 与分布式存储尚未实现。

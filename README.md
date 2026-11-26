@@ -63,3 +63,7 @@ The constrained builder accepts text and validated elements, rejects executable 
 ## Cookies
 
 `loom/cookies` exposes `cookie-values`, `set-cookie-header` and `clear-cookie-header`. Cookies default to host-only, Secure, HttpOnly and SameSite=Lax. Duplicate valid request values remain visible; applications must reject ambiguous session cookies. Cookie values are not signed or encrypted by these helpers. Use HTTPS in production; explicit non-Secure cookies are for local development only.
+
+## Sessions
+
+`loom/session` provides a bounded, synchronized in-memory store with cryptographically random opaque IDs, absolute expiry, deletion and rotation. Use immutable session values; the store does not copy them. It is process-local and loses state on restart. Cookie binding, authentication, CSRF and distributed storage are not implemented here.
