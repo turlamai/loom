@@ -68,3 +68,7 @@ raco loom dev
 ## 模型持久化（开发预览）
 
 `loom/repository` 将声明式模型映射到现有 SQLite 表，支持 `make-repository`、增删改查与有界分页。主键必须显式声明为必填字符串或整数，使用迁移创建表。更新替换全部非主键字段，缺失可选字段写入 SQL NULL，数据值使用参数化查询。暂不支持自动主键、授权、关系及 PostgreSQL 持久化适配。
+
+## 全栈示例
+
+参阅 [Taskboard](examples/taskboard/README.zh-CN.md)，包含本地 SQLite 应用与真实 HTTP 验收测试，尚不适用于生产多用户部署。
