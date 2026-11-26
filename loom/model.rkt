@@ -1,6 +1,6 @@
 #lang racket/base
 (require racket/list)
-(provide field field? make-model model? model-name model-fields define-model validate-model model-schema)
+(provide field field? field-name field-type field-required? make-model model? model-name model-fields define-model validate-model model-schema)
 (struct field (name type required?) #:transparent)
 (struct model (name fields) #:transparent)
 (define types '(string integer boolean number))

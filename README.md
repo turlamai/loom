@@ -86,3 +86,7 @@ The constrained builder accepts text and validated elements, rejects executable 
 ```
 
 Model declarations support required fields, basic types, unknown-field rejection and JSON Schema metadata. They do not generate SQL, persist data, coerce input or enforce authorization. Define separate input/output schemas for sensitive fields.
+
+## Model repositories (development preview)
+
+`loom/repository` maps explicit models to existing SQLite tables with `make-repository`, `repository-insert!`, `repository-get`, `repository-update!`, `repository-delete!` and bounded `repository-list`. Supply an explicit required string or integer key; use migrations to create the table. Updates replace all non-key fields, absent optional fields become SQL NULL, and values are parameterized. No automatic ID generation, authorization, relationships or PostgreSQL repository support yet.
