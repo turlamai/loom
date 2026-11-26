@@ -40,3 +40,14 @@ raco loom inspect --json
 raco loom test
 raco loom dev
 ```
+
+## HTML components
+
+```racket
+(require loom loom/html)
+(define-component (welcome name)
+  (element 'h1 "Hello, " name))
+(html-response (page-layout #:title "Welcome" (welcome "Racket")))
+```
+
+The constrained builder accepts text and validated elements, rejects executable tags and event attributes, and checks URL schemes. Raw `html-response` X-expressions remain a trusted-code escape hatch. This is not a general HTML sanitizer or a complete security policy.
