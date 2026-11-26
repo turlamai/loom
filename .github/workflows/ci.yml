@@ -11,7 +11,7 @@ jobs:
         with:
           version: '8.18'
       - run: raco pkg install --auto --name loom-dev --link "$(pwd)"
-      - run: raco test loom/main.rkt loom/html.rkt loom/http.rkt loom/forms.rkt loom/security.rkt loom/cookies.rkt
+      - run: raco test loom/main.rkt loom/html.rkt loom/http.rkt loom/forms.rkt loom/security.rkt loom/cookies.rkt loom/session.rkt
       - run: raco make examples/hello.rkt
       - run: raco loom doctor
       - run: raco loom new /tmp/loom-smoke
