@@ -90,3 +90,7 @@ raco loom dev
 ### 浏览器运行时预览
 
 `loom/assets/live.mjs` 提供 `attachLive(root, {endpoint, id, version, csrf})`。捕获 `button[data-live-event]` 的事件，发送同源 JSON 请求，处理过期版本且不自动重放，通过校验后的 DOM 节点替换组件子树，不插入 HTML 字符串。仅支持保守的片段子集；同一时刻仅允许一个请求，额外事件会丢弃。应用需自行提供模块资源及会话初始化配置。Node 测试使用 DOM 桩，不是真实浏览器；焦点保留、服务端推送、恢复与真实浏览器验收尚待实现。
+
+### Live Counter
+
+执行 `racket examples/live-counter/app.rkt` 后打开 http://127.0.0.1:8080/。本地示例提供浏览器运行时、会话隔离的计数器及无需页面导航的组件更新。CI 已配置 HTTP 冒烟与 Chromium 验收。刷新页面创建新实例，过期实例在后续注册表访问时回收。尚不适用于生产部署。
