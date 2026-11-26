@@ -37,3 +37,7 @@ raco loom dev
 ## 表单与安全中间件
 
 `loom/forms` 支持带大小限制的 URL 编码表单并保留重复字段；`loom/security` 提供可选的 `security-headers` 中间件，默认添加 CSP、防嵌入、nosniff 和 Referrer-Policy 响应头，并保留应用显式设置。尚不包含 CSRF、认证、TLS 或传输层限制。
+
+## Cookie
+
+`loom/cookies` 提供读取、设置和删除 Cookie 的工具，默认仅限当前主机，启用 Secure、HttpOnly 和 SameSite=Lax。保留重复的合法请求值，应用需拒绝歧义会话 Cookie。该模块不签名或加密 Cookie；生产环境应使用 HTTPS，非 Secure 配置仅用于本地开发。
