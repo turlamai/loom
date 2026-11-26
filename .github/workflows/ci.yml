@@ -16,3 +16,4 @@ jobs:
       - run: raco loom doctor
       - run: raco loom new /tmp/loom-smoke
       - run: cd /tmp/loom-smoke && raco loom inspect --json && raco loom test
+      - run: bash examples/taskboard/smoke.sh
