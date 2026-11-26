@@ -15,7 +15,7 @@ Loom is an early development prototype, not a production-ready framework. It aim
 From a checkout with Racket installed:
 
 ```sh
-raco pkg install --auto --name loom-dev --link .
+raco pkg install --auto --name loom-dev --link "$(pwd)"
 raco test loom/main.rkt
 racket examples/hello.rkt
 ```
