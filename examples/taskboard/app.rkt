@@ -1,5 +1,5 @@
 #lang racket/base
-(require loom loom/html loom/http loom/forms loom/security loom/db loom/migrate loom/model loom/repository
+(require loom loom/html loom/http loom/forms loom/security loom/db loom/migrate loom/model loom/repository loom/session loom/session-http loom/csrf-middleware
          racket/random racket/string racket/match web-server/http)
 (provide make-taskboard)
 (define-model task [id string #t] [title string #t] [done boolean #t])
@@ -26,12 +26,17 @@
 (define (error-page code message)
   (response/xexpr (page-layout #:title message (element 'h1 message)) #:code code))
 (define (make-taskboard connect)
-  ;; Single-user localhost demonstration. The process token protects forms
-  ;; from cross-origin blind submissions; it is not per-user authentication.
-  (define token (random-id))
+  ;; Local shared-board demo, with independent browser sessions.
+  (define store (make-session-store))
   (with-db connect (lambda (c) (migrate! c migrations)))
   (define (home req)
-    (with-db connect (lambda (c)
+    (define existing (web-session-ref store req #:secure? #f))
+    (define-values (state cookie)
+      (if existing (values existing #f)
+          (let-values ([(id state header) (start-web-session store 'guest #:secure? #f)])
+            (values state header))))
+    (define token (web-session-csrf state))
+    (define resp (with-db connect (lambda (c)
       (html-response (page-layout #:title "Loom Taskboard"
         (element 'main
           (element 'h1 "Taskboard")
@@ -41,11 +46,11 @@
             (element 'button "Add"))
           (apply element 'ul (map (lambda (item) (task-view item token))
                                   (repository-list c tasks #:limit 100)))))))))
+    (struct-copy response resp
+      [headers (append (response-headers resp) (list (header #"Cache-Control" #"no-store"))
+                       (if cookie (list cookie) '()))]))
   (define (mutation req action)
-    (define fields (with-handlers ([exn:fail? (lambda (_) #f)]) (request-form req #:max-bytes 4096)))
-    (cond [(not fields) (error-page 400 "Invalid form")]
-          [(not (equal? (form-values fields "csrf") (list token))) (error-page 403 "Forbidden")]
-          [else (with-db connect (lambda (c) (with-transaction c (lambda (tx) (action tx fields)))))]))
+    (with-db connect (lambda (c) (with-transaction c (lambda (tx) (action tx (current-verified-form)))))))
   (define (create req)
     (mutation req (lambda (c fields)
       (match (form-values fields "title")
@@ -68,7 +73,7 @@
                   (route #"POST" "/tasks" create)
                   (route #"POST" "/tasks/:id/toggle" (change #f))
                   (route #"POST" "/tasks/:id/delete" (change #t)))
-            #:middleware (list security-headers)))
+            #:middleware (list security-headers (form-csrf-protection store #:secure? #f #:max-bytes 4096))))
 (module+ main
   (define db-path (or (getenv "LOOM_TASKBOARD_DB") "taskboard.db"))
   (define port (string->number (or (getenv "LOOM_TASKBOARD_PORT") "8080")))
