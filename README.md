@@ -55,3 +55,7 @@ The constrained builder accepts text and validated elements, rejects executable 
 ## HTTP helpers (development preview)
 
 `loom/http` provides JSON responses, bounded JSON parsing, query and header lookup preserving repeated values, and local redirects. The JSON size limit applies after the web server has read the body; configure transport limits separately. Parsing errors need application-level HTTP error handling.
+
+## Forms and security middleware
+
+`loom/forms` parses bounded URL-encoded forms and preserves repeated fields. `loom/security` offers opt-in `security-headers` middleware with conservative CSP, frame denial, nosniff and referrer policy defaults. Existing application headers are respected. These helpers do not implement CSRF, authentication, TLS or transport-level limits.
