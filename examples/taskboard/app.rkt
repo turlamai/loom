@@ -45,7 +45,7 @@
             (element 'input #:attrs '((id "title") (name "title") (required "required")))
             (element 'button "Add"))
           (apply element 'ul (map (lambda (item) (task-view item token))
-                                  (repository-list c tasks #:limit 100))))))))))
+                                  (repository-list c tasks #:limit 100)))))))))
     (struct-copy response resp
       [headers (append (response-headers resp) (list (header #"Cache-Control" #"no-store"))
                        (if cookie (list cookie) '()))]))
