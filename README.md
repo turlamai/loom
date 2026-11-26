@@ -29,3 +29,14 @@ Open http://127.0.0.1:8080/. Package catalog availability is not verified.
 - [Website hosting](docs/hosting.md)
 
 The planned homepage is https://loom.jrtx.site/. Rivet and Glaze remain independent desktop frameworks.
+
+## CLI (development preview)
+
+```sh
+raco loom new hello
+cd hello
+raco loom doctor
+raco loom inspect --json
+raco loom test
+raco loom dev
+```
