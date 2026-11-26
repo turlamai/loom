@@ -104,3 +104,5 @@ See [Taskboard](examples/taskboard/README.md) for a local SQLite application wit
 ## Live components (runtime preview)
 
 `loom/live` introduces `make-live-component`, `live-mount`, `live-snapshot` and `live-dispatch!`. Components have an initial state factory, a pure renderer and explicitly registered event reducers. Each instance owns a version and serializes updates; stale versions and unknown events do not mutate state. Renderer failures do not commit the proposed state. Use immutable state and bounded, pure callbacks that never reenter the same instance. Browser transport, session ownership, lifecycle limits and DOM updates are not implemented yet.
+
+`loom/live-registry` adds owner-scoped instance IDs, absolute expiry, global and per-owner capacity, explicit unmount and owner revocation. Owners must come from trusted authenticated server-side session context. Operations currently share a registry lock, including rendering; callbacks must be bounded and non-reentrant. The registry is process-local; session logout must explicitly revoke the owner. No HTTP transport yet.
