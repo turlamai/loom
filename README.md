@@ -59,3 +59,7 @@ The constrained builder accepts text and validated elements, rejects executable 
 ## Forms and security middleware
 
 `loom/forms` parses bounded URL-encoded forms and preserves repeated fields. `loom/security` offers opt-in `security-headers` middleware with conservative CSP, frame denial, nosniff and referrer policy defaults. Existing application headers are respected. These helpers do not implement CSRF, authentication, TLS or transport-level limits.
+
+## Cookies
+
+`loom/cookies` exposes `cookie-values`, `set-cookie-header` and `clear-cookie-header`. Cookies default to host-only, Secure, HttpOnly and SameSite=Lax. Duplicate valid request values remain visible; applications must reject ambiguous session cookies. Cookie values are not signed or encrypted by these helpers. Use HTTPS in production; explicit non-Secure cookies are for local development only.
