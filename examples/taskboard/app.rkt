@@ -1,0 +1,75 @@
+#lang racket/base
+(require loom loom/html loom/http loom/forms loom/security loom/db loom/migrate loom/model loom/repository
+         racket/random racket/string racket/match web-server/http)
+(provide make-taskboard)
+(define-model task [id string #t] [title string #t] [done boolean #t])
+(define tasks (make-repository task #:table 'tasks #:key 'id))
+(define migrations
+  (list (migration 1 "Create tasks" (lambda (c)
+    (query-exec c "CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, done INTEGER NOT NULL CHECK(done IN (0,1)) )")))))
+(define (random-id)
+  (define digits "0123456789abcdef")
+  (list->string (for*/list ([b (in-bytes (crypto-random-bytes 16))]
+                           [n (in-list (list (quotient b 16) (remainder b 16)))])
+                  (string-ref digits n))))
+(define (form action token . children)
+  (apply element 'form #:attrs (list '(method "post") (list 'action action))
+         (element 'input #:attrs (list '(type "hidden") '(name "csrf") (list 'value token)))
+         children))
+(define (task-view item token)
+  (define id (hash-ref item 'id))
+  (element 'li
+    (element 'strong (hash-ref item 'title))
+    (element 'span (if (hash-ref item 'done) " — Done" " — Open"))
+    (form (string-append "/tasks/" id "/toggle") token (element 'button "Toggle"))
+    (form (string-append "/tasks/" id "/delete") token (element 'button "Delete"))))
+(define (error-page code message)
+  (response/xexpr (page-layout #:title message (element 'h1 message)) #:code code))
+(define (make-taskboard connect)
+  ;; Single-user localhost demonstration. The process token protects forms
+  ;; from cross-origin blind submissions; it is not per-user authentication.
+  (define token (random-id))
+  (with-db connect (lambda (c) (migrate! c migrations)))
+  (define (home req)
+    (with-db connect (lambda (c)
+      (html-response (page-layout #:title "Loom Taskboard"
+        (element 'main
+          (element 'h1 "Taskboard")
+          (form "/tasks" token
+            (element 'label #:attrs '((for "title")) "New task")
+            (element 'input #:attrs '((id "title") (name "title") (required "required")))
+            (element 'button "Add"))
+          (apply element 'ul (map (lambda (item) (task-view item token))
+                                  (repository-list c tasks #:limit 100)))))))))
+  (define (mutation req action)
+    (define fields (with-handlers ([exn:fail? (lambda (_) #f)]) (request-form req #:max-bytes 4096)))
+    (cond [(not fields) (error-page 400 "Invalid form")]
+          [(not (equal? (form-values fields "csrf") (list token))) (error-page 403 "Forbidden")]
+          [else (with-db connect (lambda (c) (with-transaction c (lambda (tx) (action tx fields)))))]))
+  (define (create req)
+    (mutation req (lambda (c fields)
+      (match (form-values fields "title")
+        [(list title)
+         (define clean (string-trim title))
+         (if (<= 1 (string-length clean) 200)
+             (begin (repository-insert! c tasks (hasheq 'id (random-id) 'title clean 'done #f))
+                    (redirect-local "/"))
+             (error-page 400 "Title must be 1 to 200 characters"))]
+        [_ (error-page 400 "Expected one title")]))))
+  (define ((change delete?) req)
+    (mutation req (lambda (c fields)
+      (define id (route-param "id"))
+      (define item (repository-get c tasks id))
+      (cond [(not item) (error-page 404 "Task not found")]
+            [else (if delete? (repository-delete! c tasks id)
+                      (repository-update! c tasks (hash-update item 'done not)))
+                  (redirect-local "/")]))))
+  (make-app (list (route #"GET" "/" home)
+                  (route #"POST" "/tasks" create)
+                  (route #"POST" "/tasks/:id/toggle" (change #f))
+                  (route #"POST" "/tasks/:id/delete" (change #t)))
+            #:middleware (list security-headers)))
+(module+ main
+  (define db-path (or (getenv "LOOM_TASKBOARD_DB") "taskboard.db"))
+  (define port (string->number (or (getenv "LOOM_TASKBOARD_PORT") "8080")))
+  (serve (make-taskboard (lambda () (open-sqlite db-path))) #:port port))
