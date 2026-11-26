@@ -71,3 +71,7 @@ The constrained builder accepts text and validated elements, rejects executable 
 ## Database (development preview)
 
 `loom/db` wraps the official Racket database library with SQLite and PostgreSQL connection helpers, scoped connection cleanup, explicit transactions and parameterized queries. SQLite transaction commit and rollback are covered by unit tests; PostgreSQL integration, pooling and migrations are not yet verified. Keep credentials outside source code and configure TLS for production.
+
+## Migrations (development preview)
+
+`loom/migrate` applies consecutive numbered migrations in a transaction and records their versions and descriptions. Reapplying the same plan is a no-op; truncated or renamed histories are rejected. Run migrations from a single deployment process. Migration code is trusted and must not commit independently. This is not a checksum, down-migration or distributed locking mechanism. SQLite tests cover rollback; PostgreSQL requires integration verification.
