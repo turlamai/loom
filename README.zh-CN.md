@@ -120,3 +120,7 @@ raco loom dev
 `loom/auth` 提供请求级身份解析、`require-authentication`、`require-role` 和 `require-resource`。在受保护处理器外安装 `authentication-middleware`，每次请求根据可信会话数据解析身份。未认证返回 401、角色不足返回 403、资源不存在或无权访问统一返回 404。参阅[会话权限转换](docs/session-transition.md)和[资源级授权](docs/resource-policy.md)。凭据校验和完整登录流程仍由应用负责。
 
 `loom/auth-lifecycle` 提供 JSON POST 登录登出处理器。登录要求已有会话与 CSRF 请求头，由应用提供凭据验证器，原子替换会话并返回新 CSRF Token 及 Set-Cookie。登出撤销当前会话，可传入 registry 和 bus 撤销旧 Live 归属。验证器须自行实施密码安全和限流；暂未提供内置密码存储或外部身份提供商。已执行中的请求不能追溯取消。
+
+### PostgreSQL 持久化适配
+
+Repository 根据连接选择 SQLite 或 PostgreSQL，使用各自参数语法，PostgreSQL 布尔字段使用原生 BOOLEAN。通过显式迁移创建表，主键仍为显式字符串或整数。PostgreSQL 16 集成测试覆盖 CRUD、分页、NULL、参数化数据及事务和迁移回滚。CI 使用一次性测试凭据并在本地关闭 TLS，生产环境须使用 TLS 并正确验证服务器身份。暂未增加关系映射、连接池和分布式迁移锁。
