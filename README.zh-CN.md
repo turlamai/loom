@@ -107,10 +107,14 @@ raco loom dev
 
 ### Live HTTP 通知
 
-`loom/live-notify` 提供 `make-live-notification-handler`，接收包含 `{id}` 的 POST JSON 请求，校验会话 Cookie 及 `X-Loom-CSRF` 请求头。可信 `(session id)` 回调授权实例访问并解析主题，等待结束后再次授权。临时订阅退出时释放，默认等待 15 秒，最大 25 秒。响应为 `changed` 或 `timeout`，两者均应读取权威状态，因为请求之间的通知不持久化。容量不足返回 503。尚未包含浏览器轮询客户端及 WebSocket 传输。
+`loom/live-notify` 提供 `make-live-notification-handler`，接收包含 `{id}` 的 POST JSON 请求，校验会话 Cookie 及 `X-Loom-CSRF` 请求头。可信 `(session id)` 回调授权实例访问并解析主题，等待结束后再次授权。临时订阅退出时释放，默认等待 15 秒，最大 25 秒。响应为 `changed` 或 `timeout`，两者均应读取权威状态，因为请求之间的通知不持久化。容量不足返回 503。尚未包含 WebSocket 传输。
 
-`loom/assets/live-notify.mjs` 提供 `subscribeLive({endpoint,id,csrf,refresh,onError})`，由应用同源提供模块，并使用 `refresh: () => client.resync()` 或应用自定义权威状态读取。超时与变更均触发刷新，异常指数退避最高 30 秒，授权或实例无效时停止轮询。卸载时调用 `dispose()`，不自动重放事件。共享状态的浏览器集成尚待验收。
+`loom/assets/live-notify.mjs` 提供 `subscribeLive({endpoint,id,csrf,refresh,onError})`，由应用同源提供模块，并使用 `refresh: () => client.resync()` 或应用自定义权威状态读取。超时与变更均触发刷新，异常指数退避最高 30 秒，授权或实例无效时停止轮询。卸载时调用 `dispose()`，不自动重放事件。共享状态浏览器集成由 Live Taskboard 验收覆盖。
 
 ### Live Taskboard
 
 运行 `racket examples/live-taskboard/app.rkt`，在两个独立浏览器会话打开 `http://127.0.0.1:8080/`。新增、切换、删除共享 SQLite 任务，通知触发权威快照刷新，不进行页面导航。设置 `LOOM_LIVE_BOARD_DB` 可指定持久化数据库路径，否则使用临时数据库文件。这是本地共享访客看板，不是生产级认证应用。数据库操作先提交再渲染，渲染失败不会撤销已提交操作。轮询可能延迟更新，不保证持久化投递。两个示例均配置了 Chromium 验收测试。
+
+### 身份认证与授权策略
+
+`loom/auth` 提供请求级身份解析、`require-authentication`、`require-role` 和 `require-resource`。在受保护处理器外安装 `authentication-middleware`，每次请求根据可信会话数据解析身份。未认证返回 401、角色不足返回 403、资源不存在或无权访问统一返回 404。参阅[会话权限转换](docs/session-transition.md)和[资源级授权](docs/resource-policy.md)。凭据校验和完整登录流程仍由应用负责。
