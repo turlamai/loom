@@ -108,3 +108,5 @@ raco loom dev
 ### Live HTTP 通知
 
 `loom/live-notify` 提供 `make-live-notification-handler`，接收包含 `{id}` 的 POST JSON 请求，校验会话 Cookie 及 `X-Loom-CSRF` 请求头。可信 `(session id)` 回调授权实例访问并解析主题，等待结束后再次授权。临时订阅退出时释放，默认等待 15 秒，最大 25 秒。响应为 `changed` 或 `timeout`，两者均应读取权威状态，因为请求之间的通知不持久化。容量不足返回 503。尚未包含浏览器轮询客户端及 WebSocket 传输。
+
+`loom/assets/live-notify.mjs` 提供 `subscribeLive({endpoint,id,csrf,refresh,onError})`，由应用同源提供模块，并使用 `refresh: () => client.resync()` 或应用自定义权威状态读取。超时与变更均触发刷新，异常指数退避最高 30 秒，授权或实例无效时停止轮询。卸载时调用 `dispose()`，不自动重放事件。共享状态的浏览器集成尚待验收。
