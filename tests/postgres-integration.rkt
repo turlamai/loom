@@ -1,5 +1,5 @@
 #lang racket/base
-(require rackunit loom/db loom/model loom/repository loom/migrate)
+(require rackunit loom/db loom/model loom/repository loom/migrate loom/db-pool (only-in db start-transaction))
 (module+ test
   (define-model task [id integer #t] [title string #t] [done boolean #t] [note string #f])
   (define r (make-repository task #:table 'tasks #:key 'id))
@@ -30,4 +30,17 @@
       (check-equal? (length (applied-migrations c)) 1)
       (check-false (query-value c "SELECT to_regclass('rollback_test') IS NOT NULL"))
       (repository-delete! c r 1)
-      (check-false (repository-get c r 1)))))
+      (check-false (repository-get c r 1))))
+  (define pool (make-db-pool
+    (lambda () (open-postgres #:database "loom_test" #:user "loom" #:password "loom-test-only" #:server "127.0.0.1" #:ssl 'no))
+    #:max-connections 1))
+  (define pid (with-pooled-db pool (lambda (c) (query-value c "SELECT pg_backend_pid()"))))
+  (check-exn exn:fail? (lambda ()
+    (with-pooled-db pool (lambda (c)
+      (start-transaction c)
+      (repository-insert! c r (hasheq 'id 99 'title "uncommitted" 'done #f))
+      (error 'test "release with open transaction")))))
+  (with-pooled-db pool (lambda (c)
+    (check-equal? (query-value c "SELECT pg_backend_pid()") pid)
+    (check-false (repository-get c r 99))
+    (check-exn exn:fail? (lambda () (with-pooled-db pool void))))))
