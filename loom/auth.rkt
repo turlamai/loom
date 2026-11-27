@@ -1,7 +1,7 @@
 #lang racket/base
 (require web-server/http "http.rkt" "session-http.rkt")
 (provide make-principal principal? principal-id principal-roles principal-has-role?
-         current-principal authentication-middleware require-authentication require-role)
+         current-principal authentication-middleware require-authentication require-role require-resource)
 (struct principal (id roles) #:transparent)
 (define (make-principal id #:roles [roles '()])
   (unless (and (string? id) (<= 1 (string-length id) 256)
@@ -38,6 +38,27 @@
     (cond [(not (principal? p)) (deny 401)]
           [(not (principal-has-role? p role)) (deny 403)]
           [else (next req)])))
+;; The loader must return #f for absent resources. Policy must return exactly
+;; #t to permit access; deny and absent share a 404 to avoid existence leaks.
+;; Pass the authorized object directly to the handler, not an unchecked ID.
+(define (require-resource load allowed? next)
+  (unless (and (procedure? load) (procedure-arity-includes? load 1)
+               (procedure? allowed?) (procedure-arity-includes? allowed? 2)
+               (procedure? next) (procedure-arity-includes? next 2))
+    (error 'require-resource "invalid resource policy contract"))
+  (define (hidden)
+    (define resp (json-response (hasheq 'error "not-found") #:code 404))
+    (struct-copy response resp
+      [headers (cons (header #"Cache-Control" #"no-store") (response-headers resp))]))
+  (lambda (req)
+    (define p (current-principal))
+    (cond
+      [(not (principal? p)) (deny 401)]
+      [else
+       (define resource (load req))
+       (if (and resource (eq? #t (allowed? p resource)))
+           (next req resource)
+           (hidden))])))
 (module+ test
   (require rackunit net/url racket/promise "session.rkt")
   (define store (make-session-store))
@@ -61,4 +82,21 @@
   (check-equal? (response-code (protected (req sid))) 401)
   (check-equal? (response-code ((require-authentication (lambda (_) (json-response #t))) (req))) 401)
   (check-equal? (principal-roles (make-principal "alice" #:roles '(admin admin))) '(admin))
-  (check-exn exn:fail? (lambda () (make-principal ""))))
+  (check-exn exn:fail? (lambda () (make-principal "")))
+  (define loads 0)
+  (define resource (hasheq 'owner "alice" 'title "private"))
+  (define guarded (require-resource
+    (lambda (_) (set! loads (add1 loads)) resource)
+    (lambda (p r) (equal? (principal-id p) (hash-ref r 'owner)))
+    (lambda (_ r) (json-response r))))
+  (check-equal? (response-code (guarded (req))) 401)
+  (check-equal? loads 0)
+  (parameterize ([current-principal (make-principal "bob")])
+    (check-equal? (response-code (guarded (req))) 404))
+  (parameterize ([current-principal (make-principal "alice")])
+    (check-equal? (response-code (guarded (req))) 200)
+    (set! resource #f)
+    (check-equal? (response-code (guarded (req))) 404)
+    (check-equal? (response-code
+      ((require-resource (lambda (_) 'item) (lambda (p r) 'truthy)
+                         (lambda (_ r) (json-response #t))) (req))) 404)))
