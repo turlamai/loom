@@ -89,7 +89,7 @@ raco loom dev
 
 ### 浏览器运行时预览
 
-`loom/assets/live.mjs` 提供 `attachLive(root, {endpoint, id, version, csrf})`。捕获 `button[data-live-event]` 的事件，发送同源 JSON 请求，处理过期版本且不自动重放，通过校验后的 DOM 节点替换组件子树，不插入 HTML 字符串。仅支持保守的片段子集；同一时刻仅允许一个请求，额外事件会丢弃。应用需自行提供模块资源及会话初始化配置。Node 测试使用 DOM 桩，不是真实浏览器；焦点保留、服务端推送、恢复与真实浏览器验收尚待实现。
+`loom/assets/live.mjs` 提供 `attachLive(root, {endpoint, id, version, csrf})`。捕获 `button[data-live-event]` 的事件，发送同源 JSON 请求，处理过期版本且不自动重放，通过校验后的 DOM 节点原地协调组件子树，不插入 HTML 字符串。仅支持保守的片段子集；同一时刻仅允许一个请求，额外事件会丢弃。应用需自行提供模块资源及会话初始化配置。Node 测试使用 DOM 桩，不是真实浏览器；使用 `data-live-key` 标识同级稳定节点；兼容节点原地复用，服务端默认值不变时保留本地编辑，默认值变化时重置控件。节点移动或不兼容替换仍可能丢失焦点，并非完整虚拟 DOM 或受控表单实现。服务端推送及重连尚待实现。
 
 ### Live Counter
 
