@@ -34,3 +34,22 @@ test("live update preserves focused input, selection and node identity",async ({
  await expect(draft).toBeFocused();
  expect(await draft.evaluate(n=>[n===window.__draft,n.selectionStart,n.selectionEnd])).toEqual([true,2,7]);
 });
+
+test("lost event response recovers without replaying mutation",async ({page})=>{
+  await page.goto("http://127.0.0.1:18881/");
+  await expect(page.locator("html")).toHaveAttribute("data-live-ready","true");
+  await page.route("**/live",async route=>{
+    const response=await route.fetch();
+    expect(response.status()).toBe(200);
+    await route.abort();
+  });
+  await page.getByRole("button",{name:"Increment"}).click();
+  await expect(page.locator("#error")).not.toHaveText("");
+  await expect(page.locator("#count")).toHaveText("0");
+  await page.unroute("**/live");
+  await page.getByRole("button",{name:"Refresh state"}).click();
+  await expect(page.locator("#count")).toHaveText("1");
+  await expect(page.locator("#error")).toHaveText("");
+  await page.getByRole("button",{name:"Increment"}).click();
+  await expect(page.locator("#count")).toHaveText("2");
+});
