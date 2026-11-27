@@ -118,3 +118,5 @@ raco loom dev
 ### 身份认证与授权策略
 
 `loom/auth` 提供请求级身份解析、`require-authentication`、`require-role` 和 `require-resource`。在受保护处理器外安装 `authentication-middleware`，每次请求根据可信会话数据解析身份。未认证返回 401、角色不足返回 403、资源不存在或无权访问统一返回 404。参阅[会话权限转换](docs/session-transition.md)和[资源级授权](docs/resource-policy.md)。凭据校验和完整登录流程仍由应用负责。
+
+`loom/auth-lifecycle` 提供 JSON POST 登录登出处理器。登录要求已有会话与 CSRF 请求头，由应用提供凭据验证器，原子替换会话并返回新 CSRF Token 及 Set-Cookie。登出撤销当前会话，可传入 registry 和 bus 撤销旧 Live 归属。验证器须自行实施密码安全和限流；暂未提供内置密码存储或外部身份提供商。已执行中的请求不能追溯取消。
