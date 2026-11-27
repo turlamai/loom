@@ -1,6 +1,6 @@
 #lang racket/base
 (require web-server/http "http.rkt" "live.rkt" "live-registry.rkt" "session-http.rkt")
-(provide make-live-event-handler live-result-json)
+(provide make-live-event-handler make-live-snapshot-handler live-result-json)
 ;; JSON tree, not executable HTML. Browser adapters must create text nodes
 ;; and validate tags/attributes rather than assigning innerHTML.
 (define (tree-json node)
@@ -50,6 +50,25 @@
               (reply (live-result-json result)
                      (case (live-result-status result) [(ok) 200] [(stale) 409] [else 422]))
               (failure 404 "instance-not-found"))])])))
+;; Read-only synchronization: never replay an event with an uncertain outcome.
+(define (make-live-snapshot-handler store registry #:secure? [secure? #t])
+  (lambda (req)
+    (define state (web-session-ref store req #:secure? secure?))
+    (define tokens (map bytes->string/latin-1 (request-header-values req #"X-Loom-CSRF")))
+    (cond
+      [(not (bytes=? (request-method req) #"POST")) (failure 405 "method-not-allowed")]
+      [(not (web-session-valid-csrf? state tokens)) (failure 403 "forbidden")]
+      [else
+       (define msg (with-handlers ([exn:fail? (lambda (_) #f)])
+                     (request-json req #:max-bytes 1024)))
+       (define id (and (hash? msg) (= (hash-count msg) 1) (hash-ref msg 'id #f)))
+       (cond [(not (and (string? id) (= (string-length id) 64)
+                        (regexp-match? #rx"^[0-9a-f]+$" id)))
+              (failure 400 "invalid-instance")]
+             [else
+              (define result (registry-snapshot registry (web-session-csrf state) id))
+              (if result (reply (live-result-json result) 200)
+                  (failure 404 "instance-not-found"))])])))
 (module+ test
   (require rackunit net/url racket/promise json "html.rkt" "session.rkt")
   (define sessions (make-session-store))
@@ -61,6 +80,7 @@
     #:events (hash "inc" (lambda (n p) (add1 n)))))
   (define id (registry-mount! instances (web-session-csrf state) component))
   (define handler (make-live-event-handler sessions instances))
+  (define snapshot-handler (make-live-snapshot-handler sessions instances))
   (define (req sid token version [event "inc"])
     (request #"POST" (string->url "/live")
       (list (header #"Cookie" (string->bytes/utf-8 (string-append "__Host-loom-session=" sid)))
@@ -68,6 +88,12 @@
             (header #"X-Loom-CSRF" (string->bytes/utf-8 token)))
       (delay '()) (jsexpr->bytes (hasheq 'id id 'version version 'event event 'payload 'null))
       "localhost" 8080 "127.0.0.1"))
+  (define (snapshot-req sid token)
+    (struct-copy request (req sid token 0)
+      [post-data/raw (jsexpr->bytes (hasheq 'id id))]))
+  (check-equal? (response-code (snapshot-handler (snapshot-req sid (web-session-csrf state)))) 200)
+  (check-equal? (response-code (snapshot-handler (snapshot-req sid2 (web-session-csrf state2)))) 404)
+  (check-equal? (response-code (snapshot-handler (snapshot-req sid (web-session-csrf state2)))) 403)
   (check-equal? (response-code (handler (req sid2 (web-session-csrf state2) 0))) 404)
   (check-equal? (response-code (handler (req sid (web-session-csrf state2) 0))) 403)
   (check-equal? (response-code (handler (req sid (web-session-csrf state) 0))) 200)
