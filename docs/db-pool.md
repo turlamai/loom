@@ -1,0 +1,7 @@
+# Database connection pools / 数据库连接池
+
+`loom/db-pool` wraps Racket's native `connection-pool`. Create one pool per application/database with a fresh-connection factory; use `with-pooled-db` for scoped access. Default maximum is 16 connections, idle capacity min(maximum,4). Pool exhaustion raises rather than waiting. Do not return a leased connection or share it across request boundaries. Leases are released even on callback exceptions; uncommitted transactions are rolled back by the native pool. Use `with-transaction` for explicit atomic operations. Connection-specific session settings, temporary tables and other persistent database state are not automatically reset; avoid them across requests. For in-memory SQLite use a single connection, or use a file-backed database for shared data. The pool belongs to its creating custodian; manage that custodian as part of application shutdown. Production PostgreSQL TLS configuration remains application-owned.
+
+`loom/db-pool` 封装 Racket 原生连接池。每个应用/数据库创建一个连接池，由工厂创建新连接，使用 `with-pooled-db` 限定租借范围。默认最多 16 个连接，空闲容量为 min(最大连接数,4)。池耗尽时抛出异常而非等待。不得将租借连接返回或跨请求共享。回调异常时释放连接，未提交事务由原生池回滚。使用 `with-transaction` 执行显式原子操作。连接级会话设置、临时表等持久状态不会自动重置，应避免跨请求使用。内存 SQLite 采用单连接，或使用文件数据库共享数据。连接池归属于创建它的 custodian，应用关闭时需管理该 custodian。生产 PostgreSQL TLS 配置由应用负责。
+
+Reference / 参考：https://docs.racket-lang.org/db/connect.html
