@@ -116,3 +116,7 @@ See [Taskboard](examples/taskboard/README.md) for a local SQLite application wit
 ### Live Counter
 
 Run `racket examples/live-counter/app.rkt` and visit http://127.0.0.1:8080/. This localhost example serves the browser runtime, mounts independent session-owned counters and updates the component without navigation. HTTP smoke and Chromium acceptance tests are configured in CI. Reloading mounts a new instance; expired instances are reclaimed on subsequent registry access. Not production-ready.
+
+### Live state recovery
+
+`make-live-snapshot-handler` provides a read-only POST JSON endpoint accepting `{id}` with the same session cookie and `X-Loom-CSRF` header as event requests. Configure `snapshotEndpoint` in `attachLive` and call `client.resync()` to retrieve the authoritative view and version after an ambiguous network failure. Events are never automatically replayed. The Live Counter includes a Refresh state control. Expired instances require remounting; automatic reconnect and server push are not implemented.
