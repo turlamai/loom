@@ -1,0 +1,5 @@
+# Login throttling / 登录限流
+
+`loom/login-limit` provides `make-login-limiter` and `login-attempt!`. Consume a permit before expensive credential verification. `#t` permits the attempt; a positive integer is a retry delay in seconds (return HTTP 429 with Retry-After). Default: 5 attempts per 60-second fixed window, 10,000 active keys. Capacity exhaustion denies new keys until expiration. Use independent limiters for canonical account identifiers and trusted client addresses, never unverified forwarding headers. Explicit `login-limiter-reset!` is administrative only. This is process-local, fixed-window protection, not distributed rate limiting; boundary bursts and account lockout abuse remain possible. Add edge controls and monitoring. The login handler does not yet invoke this module automatically.
+
+`loom/login-limit` 提供 `make-login-limiter` 和 `login-attempt!`。在执行高成本凭据验证前消耗许可，返回 `#t` 表示允许，正整数表示等待秒数（HTTP 429 与 Retry-After）。默认每 60 秒固定窗口允许 5 次尝试，最多 10000 个活跃键。容量耗尽时拒绝新键，直至过期。分别按规范化账户标识和可信客户端地址限流，不信任未经验证的转发头。`login-limiter-reset!` 仅供显式管理操作。当前为单进程固定窗口实现，不能解决跨窗口突发流量及账户锁定滥用，仍需边缘防护与监控。登录处理器暂未自动调用此模块。
