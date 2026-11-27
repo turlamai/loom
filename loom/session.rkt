@@ -1,6 +1,6 @@
 #lang racket/base
 (require racket/random)
-(provide make-session-store session-create! session-ref session-delete! session-rotate!)
+(provide make-session-store session-create! session-ref session-delete! session-rotate! session-replace!)
 (struct entry (value expiry) #:transparent)
 (struct store (table lock ttl capacity clock) #:transparent)
 (define (make-session-store #:ttl [ttl 3600] #:capacity [capacity 10000]
@@ -45,6 +45,22 @@
     (and e (let ([value (entry-value e)])
              (hash-remove! (store-table s) id)
              (insert! s value now))))))
+;; Atomic compare-and-replace of the session identity and value. The caller
+;; supplies the exact previously verified value; concurrent transitions lose.
+(define (session-replace! s id expected replacement)
+  (when (eq? replacement #f) (error 'session-replace! "#f reserved for absent session"))
+  (locked s (lambda ()
+    (define now ((store-clock s)))
+    (prune! s now)
+    (define e (hash-ref (store-table s) id #f))
+    (and e (eq? expected (entry-value e))
+         (let loop ()
+           (define next (token))
+           (if (hash-has-key? (store-table s) next) (loop)
+               (begin
+                 (hash-set! (store-table s) next (entry replacement (+ now (store-ttl s))))
+                 (hash-remove! (store-table s) id)
+                 next)))))))
 (module+ test
   (require rackunit)
   (define now 100)
@@ -62,4 +78,15 @@
   (define third (session-create! s 'other))
   (session-delete! s third)
   (check-false (session-ref s third))
-  (check-false (session-rotate! s third)))
+  (check-false (session-rotate! s third))
+  (define original (session-create! s 'guest))
+  (check-false (session-replace! s original 'wrong 'user))
+  (check-equal? (session-ref s original) 'guest)
+  (define ch (make-channel))
+  (for ([i (in-range 2)])
+    (thread (lambda () (channel-put ch (session-replace! s original 'guest 'user)))))
+  (define results (list (channel-get ch) (channel-get ch)))
+  (define winners (filter string? results))
+  (check-equal? (length winners) 1)
+  (check-false (session-ref s original))
+  (check-equal? (session-ref s (car winners)) 'user))
