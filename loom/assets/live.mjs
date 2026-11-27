@@ -95,11 +95,13 @@ export function updateTree(root, tree) {
   patchChildren(root, wrapper);
 }
 
-export function attachLive(root, {endpoint, id, version, csrf, onError = console.error}) {
+export function attachLive(root, {endpoint, snapshotEndpoint, id, version, csrf, onError = console.error}) {
   const url = new URL(endpoint, document.baseURI);
   if (url.origin !== location.origin || !["http:", "https:"].includes(url.protocol)) throw new Error("invalid endpoint");
   if (!/^[0-9a-f]{64}$/.test(id) || !/^[0-9a-f]{64}$/.test(csrf) || !Number.isSafeInteger(version) || version < 0)
     throw new Error("invalid live configuration");
+  const snapshotURL = snapshotEndpoint ? new URL(snapshotEndpoint, document.baseURI) : null;
+  if (snapshotURL && (snapshotURL.origin !== location.origin || !["http:", "https:"].includes(snapshotURL.protocol))) throw new Error("invalid snapshot endpoint");
   let busy = false, disposed = false;
   const controller = new AbortController();
   async function dispatch(event, payload = null) {
@@ -129,6 +131,32 @@ export function attachLive(root, {endpoint, id, version, csrf, onError = console
       if (!disposed) root.removeAttribute("aria-busy");
     }
   }
+  async function resync() {
+    if (disposed || busy || !snapshotURL) return false;
+    busy = true;
+    root.setAttribute("aria-busy", "true");
+    try {
+      const response = await fetch(snapshotURL, {
+        method:"POST", credentials:"same-origin", redirect:"error", cache:"no-store",
+        headers:{"Content-Type":"application/json","X-Loom-CSRF":csrf},
+        body:JSON.stringify({id}), signal:controller.signal
+      });
+      if (response.status !== 200) throw new Error("snapshot HTTP " + response.status);
+      const data = await response.json();
+      if (data.status !== "ok" || !Number.isSafeInteger(data.version) || data.version < version)
+        throw new Error("invalid snapshot");
+      if (disposed) return false;
+      updateTree(root,data.view);
+      version = data.version;
+      return true;
+    } catch(error) {
+      if (!disposed) onError(error);
+      return false;
+    } finally {
+      busy = false;
+      if (!disposed) root.removeAttribute("aria-busy");
+    }
+  }
   function click(e) {
     const button = e.target instanceof Element && e.target.closest("button[data-live-event]");
     if (!button || !root.contains(button)) return;
@@ -136,7 +164,7 @@ export function attachLive(root, {endpoint, id, version, csrf, onError = console
     dispatch(button.dataset.liveEvent, button.dataset.livePayload ?? null).catch(onError);
   }
   root.addEventListener("click", click);
-  return {dispatch, dispose() {
+  return {dispatch, resync, dispose() {
     disposed = true; controller.abort(); root.removeEventListener("click", click);
     root.removeAttribute("aria-busy");
   }};

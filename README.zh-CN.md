@@ -94,3 +94,7 @@ raco loom dev
 ### Live Counter
 
 执行 `racket examples/live-counter/app.rkt` 后打开 http://127.0.0.1:8080/。本地示例提供浏览器运行时、会话隔离的计数器及无需页面导航的组件更新。CI 已配置 HTTP 冒烟与 Chromium 验收。刷新页面创建新实例，过期实例在后续注册表访问时回收。尚不适用于生产部署。
+
+### Live 状态恢复
+
+`make-live-snapshot-handler` 提供只读 POST JSON 接口，接收 `{id}`，使用与事件请求相同的会话 Cookie 和 `X-Loom-CSRF` 请求头。在 `attachLive` 中配置 `snapshotEndpoint`，通过 `client.resync()` 在网络结果不确定时获取服务端权威视图及版本，不自动重放事件。Live Counter 提供 Refresh state 按钮。实例过期后需重新挂载，尚未实现自动重连及服务端推送。
