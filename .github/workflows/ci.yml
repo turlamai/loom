@@ -26,13 +26,14 @@ jobs:
           version: '8.18'
       - run: sudo apt-get update && sudo apt-get install -y libargon2-1
       - run: raco pkg install --auto --name loom-dev --link "$(pwd)"
-      - run: raco test loom/main.rkt loom/html.rkt loom/http.rkt loom/forms.rkt loom/security.rkt loom/cookies.rkt loom/session.rkt loom/csrf.rkt loom/session-http.rkt loom/csrf-middleware.rkt loom/db.rkt loom/migrate.rkt loom/model.rkt loom/repository.rkt loom/live.rkt loom/live-registry.rkt loom/live-http.rkt loom/live-bus.rkt loom/live-notify.rkt loom/auth.rkt loom/auth-lifecycle.rkt loom/login-limit.rkt loom/openapi.rkt loom/db-pool.rkt loom/password.rkt
+      - run: raco test loom/main.rkt loom/html.rkt loom/http.rkt loom/forms.rkt loom/security.rkt loom/cookies.rkt loom/session.rkt loom/csrf.rkt loom/session-http.rkt loom/csrf-middleware.rkt loom/db.rkt loom/migrate.rkt loom/model.rkt loom/repository.rkt loom/live.rkt loom/live-registry.rkt loom/live-http.rkt loom/live-bus.rkt loom/live-notify.rkt loom/auth.rkt loom/auth-lifecycle.rkt loom/login-limit.rkt loom/openapi.rkt loom/db-pool.rkt loom/password.rkt loom/live-channel.rkt
       - run: raco test tests/postgres-integration.rkt
       - run: raco make examples/hello.rkt
       - run: raco loom doctor
       - run: raco loom new /tmp/loom-smoke
       - run: cd /tmp/loom-smoke && raco loom inspect --json && raco loom test
       - run: bash examples/taskboard/smoke.sh
+      - run: bash examples/auth-demo/smoke.sh
       - run: node --test tests/live-browser.test.mjs tests/live-notify.test.mjs
       - run: bash examples/live-counter/smoke.sh
       - run: npm install --prefix tests --no-audit --no-fund
