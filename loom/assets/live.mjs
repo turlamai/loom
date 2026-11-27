@@ -95,17 +95,28 @@ export function updateTree(root, tree) {
   patchChildren(root, wrapper);
 }
 
-export function attachLive(root, {endpoint, snapshotEndpoint, id, version, csrf, onError = console.error}) {
+export function attachLive(root, {endpoint, snapshotEndpoint, id, version, csrf, onError = console.error, autoRecover = false, onRecovered = () => {}}) {
   const url = new URL(endpoint, document.baseURI);
   if (url.origin !== location.origin || !["http:", "https:"].includes(url.protocol)) throw new Error("invalid endpoint");
   if (!/^[0-9a-f]{64}$/.test(id) || !/^[0-9a-f]{64}$/.test(csrf) || !Number.isSafeInteger(version) || version < 0)
     throw new Error("invalid live configuration");
   const snapshotURL = snapshotEndpoint ? new URL(snapshotEndpoint, document.baseURI) : null;
   if (snapshotURL && (snapshotURL.origin !== location.origin || !["http:", "https:"].includes(snapshotURL.protocol))) throw new Error("invalid snapshot endpoint");
-  let busy = false, disposed = false;
+  let busy = false, disposed = false, uncertain = false, timer = null, attempts = 0;
+  const delays = [250, 1000, 3000];
+  function scheduleRecovery() {
+    if (!autoRecover || !snapshotURL || disposed || !uncertain || timer !== null || attempts >= delays.length) return;
+    timer = setTimeout(async () => {
+      timer = null;
+      if (disposed || !uncertain) return;
+      if (busy) { scheduleRecovery(); return; }
+      attempts++;
+      await resync();
+    }, delays[attempts]);
+  }
   const controller = new AbortController();
   async function dispatch(event, payload = null) {
-    if (disposed || busy) return false;
+    if (disposed || busy || uncertain) return false;
     if (!/^[a-z][a-z0-9_-]{0,63}$/.test(event)) throw new Error("invalid event");
     busy = true;
     root.setAttribute("aria-busy", "true");
@@ -124,7 +135,12 @@ export function attachLive(root, {endpoint, snapshotEndpoint, id, version, csrf,
       version = data.version;
       return response.status === 200;
     } catch (error) {
-      if (!disposed) onError(error);
+      if (!disposed) {
+        uncertain = Boolean(snapshotURL);
+        attempts = 0;
+        onError(error);
+        scheduleRecovery();
+      }
       return false;
     } finally {
       busy = false;
@@ -148,6 +164,11 @@ export function attachLive(root, {endpoint, snapshotEndpoint, id, version, csrf,
       if (disposed) return false;
       updateTree(root,data.view);
       version = data.version;
+      const recovered = uncertain;
+      uncertain = false;
+      attempts = 0;
+      if (timer !== null) { clearTimeout(timer); timer = null; }
+      if (recovered) onRecovered();
       return true;
     } catch(error) {
       if (!disposed) onError(error);
@@ -155,6 +176,14 @@ export function attachLive(root, {endpoint, snapshotEndpoint, id, version, csrf,
     } finally {
       busy = false;
       if (!disposed) root.removeAttribute("aria-busy");
+      scheduleRecovery();
+    }
+  }
+  function online() {
+    if (autoRecover && uncertain && !disposed) {
+      attempts = 0;
+      if (timer !== null) { clearTimeout(timer); timer = null; }
+      scheduleRecovery();
     }
   }
   function click(e) {
@@ -164,8 +193,12 @@ export function attachLive(root, {endpoint, snapshotEndpoint, id, version, csrf,
     dispatch(button.dataset.liveEvent, button.dataset.livePayload ?? null).catch(onError);
   }
   root.addEventListener("click", click);
+  if (autoRecover) globalThis.addEventListener?.("online", online);
   return {dispatch, resync, dispose() {
-    disposed = true; controller.abort(); root.removeEventListener("click", click);
+    disposed = true;
+    if (timer !== null) clearTimeout(timer);
+    if (autoRecover) globalThis.removeEventListener?.("online", online);
+    controller.abort(); root.removeEventListener("click", click);
     root.removeAttribute("aria-busy");
   }};
 }
