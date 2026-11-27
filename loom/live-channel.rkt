@@ -28,8 +28,8 @@
   (lambda (raw)
     (call-with-semaphore lock
       (lambda ()
-        (define state (lookup))
-        (define msg (parse raw limit))
+        (define state (and (not closed?) (lookup)))
+        (define msg (and (web-session? state) (parse raw limit)))
         (cond
           [closed? (err "closed")]
           [(not (web-session? state)) (close! "forbidden")]
@@ -39,6 +39,7 @@
              [(not (and (shape? msg '(type id csrf))
                         (equal? (hash-ref msg 'type) "bind")
                         (id? (hash-ref msg 'id))
+                        (string? (hash-ref msg 'csrf))
                         (web-session-valid-csrf? state (list (hash-ref msg 'csrf)))))
               (close! "forbidden")]
              [else
@@ -82,6 +83,10 @@
   (check-equal? (hash-ref (ch event) 'status) "stale")
   (check-equal? (hash-ref (ch (jsexpr->bytes (hasheq 'type "snapshot"))) 'version) 1)
   (check-equal? (hash-ref (ch (make-bytes 16385)) 'error) "invalid-message")
+  (define invalid (make-live-channel registry (lambda () state)))
+  (check-equal? (hash-ref (invalid (jsexpr->bytes (hasheq 'type "bind" 'id id 'csrf 42))) 'error) "forbidden")
+  (check-equal? (hash-ref (invalid (bind state)) 'error) "closed")
+  (check-equal? (hash-ref (ch #"{} {}") 'error) "invalid-message")
   (session-delete! store sid)
   (check-equal? (hash-ref (ch event) 'error) "forbidden")
   (check-equal? (hash-ref (ch event) 'error) "closed"))
