@@ -24,8 +24,9 @@ jobs:
       - uses: Bogdanp/setup-racket@v1.14
         with:
           version: '8.18'
+      - run: sudo apt-get update && sudo apt-get install -y libargon2-1
       - run: raco pkg install --auto --name loom-dev --link "$(pwd)"
-      - run: raco test loom/main.rkt loom/html.rkt loom/http.rkt loom/forms.rkt loom/security.rkt loom/cookies.rkt loom/session.rkt loom/csrf.rkt loom/session-http.rkt loom/csrf-middleware.rkt loom/db.rkt loom/migrate.rkt loom/model.rkt loom/repository.rkt loom/live.rkt loom/live-registry.rkt loom/live-http.rkt loom/live-bus.rkt loom/live-notify.rkt loom/auth.rkt loom/auth-lifecycle.rkt loom/login-limit.rkt loom/openapi.rkt loom/db-pool.rkt
+      - run: raco test loom/main.rkt loom/html.rkt loom/http.rkt loom/forms.rkt loom/security.rkt loom/cookies.rkt loom/session.rkt loom/csrf.rkt loom/session-http.rkt loom/csrf-middleware.rkt loom/db.rkt loom/migrate.rkt loom/model.rkt loom/repository.rkt loom/live.rkt loom/live-registry.rkt loom/live-http.rkt loom/live-bus.rkt loom/live-notify.rkt loom/auth.rkt loom/auth-lifecycle.rkt loom/login-limit.rkt loom/openapi.rkt loom/db-pool.rkt loom/password.rkt
       - run: raco test tests/postgres-integration.rkt
       - run: raco make examples/hello.rkt
       - run: raco loom doctor
