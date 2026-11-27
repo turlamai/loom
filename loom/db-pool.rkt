@@ -1,0 +1,38 @@
+#lang racket/base
+(require db)
+(provide make-db-pool with-pooled-db)
+;; Use Racket's maintained connection pool, rather than implementing a
+;; competing lease manager. Connections are leased only within the callback.
+(define (make-db-pool connect #:max-connections [maximum 16]
+                     #:max-idle-connections [idle (min maximum 4)])
+  (unless (and (procedure? connect) (procedure-arity-includes? connect 0)
+               (exact-integer? maximum) (<= 1 maximum 10000)
+               (exact-integer? idle) (<= 1 idle maximum))
+    (error 'make-db-pool "invalid connection pool configuration"))
+  (connection-pool connect #:max-connections maximum #:max-idle-connections idle))
+(define (with-pooled-db pool proc)
+  (unless (and (procedure? proc) (procedure-arity-includes? proc 1))
+    (raise-argument-error 'with-pooled-db "one-argument procedure" proc))
+  (define conn (connection-pool-lease pool))
+  (dynamic-wind void
+                (lambda () (call-with-continuation-barrier (lambda () (proc conn))))
+                (lambda () (disconnect conn))))
+(module+ test
+  (require rackunit)
+  (define opens 0)
+  (define pool (make-db-pool (lambda ()
+    (set! opens (add1 opens))
+    (sqlite3-connect #:database 'memory)) #:max-connections 1 #:max-idle-connections 1))
+  (with-pooled-db pool (lambda (c)
+    (query-exec c "CREATE TABLE example (id INTEGER)")
+    (query-exec c "INSERT INTO example VALUES (1)")))
+  (check-equal? (with-pooled-db pool (lambda (c) (query-value c "SELECT COUNT(*) FROM example"))) 1)
+  (check-exn exn:fail? (lambda ()
+    (with-pooled-db pool (lambda (c) (error 'test "callback failure")))))
+  (check-equal? (with-pooled-db pool (lambda (c) (query-value c "SELECT COUNT(*) FROM example"))) 1)
+  (check-equal? opens 1)
+  (with-pooled-db pool (lambda (c)
+    (check-exn exn:fail? (lambda () (with-pooled-db pool void)))))
+  (check-equal? (with-pooled-db pool (lambda (c) (query-value c "SELECT COUNT(*) FROM example"))) 1)
+  (check-exn exn:fail? (lambda () (make-db-pool void #:max-idle-connections 0)))
+  (check-exn exn:fail? (lambda () (make-db-pool void #:max-connections 1 #:max-idle-connections 2))))
