@@ -1,8 +1,8 @@
 #lang racket/base
-(require web-server/http "http.rkt" "session-http.rkt" "live-registry.rkt" "live-bus.rkt")
+(require web-server/http "http.rkt" "session-http.rkt" "live-registry.rkt" "live-bus.rkt" "login-limit.rkt")
 (provide make-login-handler make-logout-handler)
 ;; The verifier is application-owned, receives credential JSON, and returns
-;; trusted session data or #f. It must enforce rate limits and secure password
+;; trusted session data or #f. It must enforce secure password
 ;; verification; this layer never stores or logs credentials.
 (define (reply code data [cookie #f])
   (define resp (json-response data #:code code))
@@ -17,7 +17,10 @@
   (when registry (registry-revoke-owner! registry owner))
   (when bus (live-revoke-owner! bus owner)))
 (define (make-login-handler store verify #:secure? [secure? #t]
-                            #:registry [registry #f] #:bus [bus #f])
+                            #:registry [registry #f] #:bus [bus #f]
+                            #:attempt-policy [attempt-policy (lambda (req body) #t)])
+  (unless (and (procedure? attempt-policy) (procedure-arity-includes? attempt-policy 2))
+    (raise-argument-error 'make-login-handler "two-argument attempt policy" attempt-policy))
   (unless (and (procedure? verify) (procedure-arity-includes? verify 1))
     (raise-argument-error 'make-login-handler "one-argument verifier" verify))
   (lambda (req)
@@ -31,8 +34,15 @@
        (cond
          [(not (hash? body)) (reject 400 "invalid-credentials")]
          [else
-          (define data (verify body))
+          (define permit (attempt-policy req body))
           (cond
+            [(exact-positive-integer? permit)
+             (define resp (reject 429 "too-many-attempts"))
+             (struct-copy response resp [headers (cons (header #"Retry-After" (string->bytes/utf-8 (number->string permit))) (response-headers resp))])]
+            [(not (eq? permit #t)) (reject 403 "forbidden")]
+            [else
+             (define data (verify body))
+             (cond
             [(not data) (reject 401 "invalid-credentials")]
             [else
              (define transition (transition-web-session store req state data #:secure? secure?))
@@ -41,7 +51,7 @@
                [else
                 (revoke-live state registry bus)
                 (reply 200 (hasheq 'csrf (web-session-csrf (cadr transition)))
-                       (caddr transition))])])])])))
+                       (caddr transition))])])])])])))
 (define (make-logout-handler store #:secure? [secure? #t]
                              #:registry [registry #f] #:bus [bus #f])
   (lambda (req)
@@ -94,4 +104,17 @@
   (define csrf (web-session-csrf current))
   (check-equal? (response-code (logout (req new-id owner good))) 403)
   (check-equal? (response-code (logout (req new-id csrf good))) 200)
-  (check-false (web-session-ref store (req new-id csrf good))))
+  (check-false (web-session-ref store (req new-id csrf good)))
+  (define-values (limited-id limited-state limited-cookie) (start-web-session store 'guest))
+  (define limiter (make-login-limiter #:limit 1 #:window 60 #:clock (lambda () 0)))
+  (define verified 0)
+  (define limited-login (make-login-handler store
+    (lambda (_) (set! verified (add1 verified)) #f)
+    #:attempt-policy (lambda (req body) (login-attempt! limiter "test-account"))))
+  (define limited-request (req limited-id (web-session-csrf limited-state) good))
+  (check-equal? (response-code (limited-login limited-request)) 401)
+  (define blocked (limited-login limited-request))
+  (check-equal? (response-code blocked) 429)
+  (check-equal? verified 1)
+  (check-equal? (for/first ([h (in-list (response-headers blocked))]
+    #:when (bytes=? (header-field h) #"Retry-After")) (header-value h)) #"60"))
