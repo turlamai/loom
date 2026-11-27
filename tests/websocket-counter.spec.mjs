@@ -41,3 +41,26 @@ test("rejects cross-session binding", async ({browser}) => {
     expect(error).toBe("instance-not-found");
   } finally {await a.close();await b.close();}
 });
+
+test("rejects unexpected Origin even with a valid session cookie", async ({page}) => {
+  await page.goto(base);
+  // Cookies are scoped to the host, not the port. The alternate HTTP
+  // listener therefore presents the same cookie but a different Origin.
+  await page.goto("http://127.0.0.1:18881/");
+  const code = await page.evaluate(() => new Promise((resolve,reject) => {
+    const ws = new WebSocket("ws://127.0.0.1:18885/live");
+    const timer = setTimeout(()=>{ws.close();reject(new Error("origin rejection timeout"));},5000);
+    ws.onclose = e => {clearTimeout(timer);resolve(e.code);};
+  }));
+  expect(code).toBe(1008);
+});
+test("rejects a socket without an HTTP session", async ({page}) => {
+  await page.goto(base);
+  await page.context().clearCookies();
+  const code = await page.evaluate(() => new Promise((resolve,reject) => {
+    const ws = new WebSocket("ws://127.0.0.1:18885/live");
+    const timer = setTimeout(()=>{ws.close();reject(new Error("session rejection timeout"));},5000);
+    ws.onclose = e => {clearTimeout(timer);resolve(e.code);};
+  }));
+  expect(code).toBe(1008);
+});
