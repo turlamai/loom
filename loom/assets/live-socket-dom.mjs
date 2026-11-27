@@ -4,7 +4,9 @@ import {connectLiveSocket} from "./live-socket.mjs";
 // A failed or ambiguous mutation is never replayed. Only a fresh bind
 // and authoritative render can re-enable dispatch.
 export function attachLiveSocket(root,{endpoint,id,csrf,version=0,timeout=5000,
-    onError=console.error,onRecovered=()=>{},autoRecover=true}){
+    onError=console.error,onRecovered=()=>{},autoRecover=true,heartbeat=15000}){
+  if(!Number.isInteger(heartbeat)||heartbeat<0||(heartbeat!==0&&(heartbeat<1000||heartbeat>60000)))
+    throw new TypeError("Invalid heartbeat interval");
   const transport=connectLiveSocket({endpoint,id,csrf,timeout,onDisconnect(error){
     if(disposed)return;
     ready=false;
@@ -61,9 +63,18 @@ export function attachLiveSocket(root,{endpoint,id,csrf,version=0,timeout=5000,
   function online(){if(!ready&&!disposed){attempts=0;if(timer!==null){clearTimeout(timer);timer=null;}schedule();}}
   root.addEventListener("click",click);
   if(autoRecover)globalThis.addEventListener("online",online);
+  const pulse=heartbeat===0?null:setInterval(()=>{
+    if(disposed||busy||!ready)return;
+    void run(async()=>{
+      const data=await transport.snapshot();
+      if(data.status!=="ok")throw new Error("Heartbeat rejected");
+      return apply(data);
+    });
+  },heartbeat);
   const connected=resync();
   return {connected,dispatch,resync,dispose(){
     disposed=true;ready=false;if(timer!==null)clearTimeout(timer);
+    if(pulse!==null)clearInterval(pulse);
     transport.dispose();root.removeEventListener("click",click);
     if(autoRecover)globalThis.removeEventListener("online",online);
     root.removeAttribute("aria-busy");
