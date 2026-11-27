@@ -126,3 +126,7 @@ Opt in with `autoRecover: true` and `onRecovered` in `attachLive`. Failed event 
 ### Live invalidation bus
 
 `loom/live-bus` provides bounded, process-local topic subscriptions and coalescing change notifications. Trusted application code must authorize topic membership before subscribing; owner IDs control unsubscribe and bulk revocation, not topic access by themselves. One consumer per subscription uses `sync` on `live-next-evt`, obtaining `changed` or `closed`. Notifications carry no payload and are not durable; readers fetch authoritative state after invalidation. Explicit cleanup is required. Network transport and automatic session revocation are not included.
+
+### Live HTTP notifications
+
+`loom/live-notify` exports `make-live-notification-handler`. It accepts a POST JSON `{id}` with the session cookie and `X-Loom-CSRF` header. A trusted `(session id)` callback authorizes instance ownership and resolves a topic; authorization is checked again after the wait. The temporary subscription is released on exit. The default wait is 15 seconds (maximum 25). Responses are `changed` or `timeout`; both require reading authoritative state because notifications between requests are not durable. Capacity exhaustion returns 503. No browser polling client or WebSocket transport is included yet.
