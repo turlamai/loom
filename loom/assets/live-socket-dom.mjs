@@ -5,7 +5,11 @@ import {connectLiveSocket} from "./live-socket.mjs";
 // and authoritative render can re-enable dispatch.
 export function attachLiveSocket(root,{endpoint,id,csrf,version=0,timeout=5000,
     onError=console.error,onRecovered=()=>{},autoRecover=true}){
-  const transport=connectLiveSocket({endpoint,id,csrf,timeout});
+  const transport=connectLiveSocket({endpoint,id,csrf,timeout,onDisconnect(error){
+    if(disposed)return;
+    ready=false;
+    if(!busy){attempts=0;schedule();onError(error);}
+  }});
   const delays=[250,1000,3000];
   let disposed=false,busy=false,ready=false,timer=null,attempts=0;
   function apply(data){
@@ -16,7 +20,7 @@ export function attachLiveSocket(root,{endpoint,id,csrf,version=0,timeout=5000,
   }
   function schedule(){
     if(!autoRecover||disposed||ready||timer!==null||attempts>=delays.length)return;
-    timer=setTimeout(()=>{timer=null;attempts++;void resync();},delays[attempts]);
+    timer=setTimeout(()=>{timer=null;if(busy){schedule();return;}attempts++;void resync();},delays[attempts]);
   }
   async function run(action){
     if(disposed||busy)return false;
