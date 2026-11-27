@@ -111,8 +111,12 @@ See [Taskboard](examples/taskboard/README.md) for a local SQLite application wit
 
 ### Browser runtime preview
 
-`loom/assets/live.mjs` exports `attachLive(root, {endpoint, id, version, csrf})`. It sends same-origin JSON events from `button[data-live-event]`, handles stale versions without replay, and replaces the component subtree using validated DOM nodes, not HTML strings. Only a conservative fragment subset is supported. One event may be in flight; extra events are dropped. Applications must serve the module and bootstrap session configuration. Node tests use a DOM stub, not an actual browser. Focus preservation, server push, recovery and real browser acceptance remain outstanding.
+`loom/assets/live.mjs` exports `attachLive(root, {endpoint, id, version, csrf})`. It sends same-origin JSON events from `button[data-live-event]`, handles stale versions without replay, and reconciles the component subtree using validated DOM nodes, not HTML strings. Only a conservative fragment subset is supported. One event may be in flight; extra events are dropped. Applications must serve the module and bootstrap session configuration. Node tests use a DOM stub, not an actual browser. Compatible nodes are reused; stable sibling keys use `data-live-key`. Unchanged input defaults preserve local edits, changed defaults reset the control. Keyed moves and replacement of incompatible nodes may lose focus; this is not a general virtual DOM or controlled form implementation. Server push and reconnect remain outstanding.
 
 ### Live Counter
 
 Run `racket examples/live-counter/app.rkt` and visit http://127.0.0.1:8080/. This localhost example serves the browser runtime, mounts independent session-owned counters and updates the component without navigation. HTTP smoke and Chromium acceptance tests are configured in CI. Reloading mounts a new instance; expired instances are reclaimed on subsequent registry access. Not production-ready.
+
+### Live state recovery
+
+`make-live-snapshot-handler` provides a read-only POST JSON endpoint accepting `{id}` with the same session cookie and `X-Loom-CSRF` header as event requests. Configure `snapshotEndpoint` in `attachLive` and call `client.resync()` to retrieve the authoritative view and version after an ambiguous network failure. Events are never automatically replayed. The Live Counter includes a Refresh state control. Expired instances require remounting; automatic reconnect and server push are not implemented.

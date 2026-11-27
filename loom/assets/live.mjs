@@ -23,11 +23,85 @@ export function buildTree(tree, depth = 0, budget = {left: 5000}) {
   for (const child of tree.children) node.append(buildTree(child, depth + 1, budget));
   return node;
 }
-export function attachLive(root, {endpoint, id, version, csrf, onError = console.error}) {
+// Reuse compatible nodes in place. Explicit keys identify stable siblings.
+// Validate the complete incoming tree before touching the mounted DOM.
+function key(node) {
+  return node.nodeType === 1 ? node.getAttribute("data-live-key") : null;
+}
+function compatible(old, next) {
+  return old.nodeType === next.nodeType &&
+    (old.nodeType === 3 || (old.nodeName === next.nodeName && key(old) === key(next) &&
+     (old.nodeName !== "INPUT" || old.type === next.type)));
+}
+function checkKeys(node) {
+  const seen = new Set();
+  for (const child of node.childNodes) {
+    const k = key(child);
+    if (k !== null && seen.has(k)) throw new Error("duplicate live key");
+    if (k !== null) seen.add(k);
+    checkKeys(child);
+  }
+}
+function patch(old, next) {
+  if (old.nodeType === 3) {
+    if (old.nodeValue !== next.nodeValue) old.nodeValue = next.nodeValue;
+    return;
+  }
+  const isInput = old.nodeName === "INPUT" || old.nodeName === "TEXTAREA";
+  const priorDefault = old.defaultValue;
+  const priorChecked = old.defaultChecked;
+  const focused = old === document.activeElement;
+  for (const name of old.getAttributeNames())
+    if (!next.hasAttribute(name)) old.removeAttribute(name);
+  for (const name of next.getAttributeNames())
+    if (old.getAttribute(name) !== next.getAttribute(name)) old.setAttribute(name, next.getAttribute(name));
+  patchChildren(old, next);
+  // Unchanged server defaults preserve local editing; changed defaults
+  // explicitly reset the control, except for file inputs.
+  if (isInput && old.type !== "file" && priorDefault !== next.defaultValue)
+    old.value = next.defaultValue;
+  if (old.nodeName === "INPUT" && priorChecked !== next.defaultChecked)
+    old.checked = next.defaultChecked;
+  // Reused focused controls normally retain focus and selection natively.
+  if (focused && document.activeElement !== old && old.isConnected) old.focus({preventScroll:true});
+}
+function patchChildren(parent, next) {
+  const incoming = Array.from(next.childNodes);
+  const remaining = new Set(parent.childNodes);
+  const keyed = new Map(Array.from(remaining).filter(n=>key(n)!==null).map(n=>[key(n),n]));
+  let cursor = parent.firstChild;
+  for (const fresh of incoming) {
+    const k = key(fresh);
+    const candidate = k !== null ? keyed.get(k) : cursor;
+    if (candidate && remaining.has(candidate) && compatible(candidate,fresh)) {
+      if (candidate !== cursor) parent.insertBefore(candidate,cursor);
+      patch(candidate,fresh);
+      remaining.delete(candidate);
+      cursor = candidate.nextSibling;
+    } else {
+      parent.insertBefore(fresh,cursor);
+      cursor = fresh.nextSibling;
+    }
+  }
+  for (const node of remaining) node.remove();
+}
+export function updateTree(root, tree) {
+  const next = buildTree(tree);
+  checkKeys(next);
+  // A fragment wrapper lets the same reconciliation algorithm manage the
+  // rendered root while keeping the stable transport host outside it.
+  const wrapper = document.createElement("div");
+  wrapper.append(next);
+  patchChildren(root, wrapper);
+}
+
+export function attachLive(root, {endpoint, snapshotEndpoint, id, version, csrf, onError = console.error}) {
   const url = new URL(endpoint, document.baseURI);
   if (url.origin !== location.origin || !["http:", "https:"].includes(url.protocol)) throw new Error("invalid endpoint");
   if (!/^[0-9a-f]{64}$/.test(id) || !/^[0-9a-f]{64}$/.test(csrf) || !Number.isSafeInteger(version) || version < 0)
     throw new Error("invalid live configuration");
+  const snapshotURL = snapshotEndpoint ? new URL(snapshotEndpoint, document.baseURI) : null;
+  if (snapshotURL && (snapshotURL.origin !== location.origin || !["http:", "https:"].includes(snapshotURL.protocol))) throw new Error("invalid snapshot endpoint");
   let busy = false, disposed = false;
   const controller = new AbortController();
   async function dispatch(event, payload = null) {
@@ -45,12 +119,37 @@ export function attachLive(root, {endpoint, id, version, csrf, onError = console
       const data = await response.json();
       if (!Number.isSafeInteger(data.version) || data.version < version ||
           data.status !== (response.status === 200 ? "ok" : "stale")) throw new Error("invalid response");
-      const node = buildTree(data.view);
       if (disposed) return false;
-      root.replaceChildren(node);
+      updateTree(root, data.view);
       version = data.version;
       return response.status === 200;
     } catch (error) {
+      if (!disposed) onError(error);
+      return false;
+    } finally {
+      busy = false;
+      if (!disposed) root.removeAttribute("aria-busy");
+    }
+  }
+  async function resync() {
+    if (disposed || busy || !snapshotURL) return false;
+    busy = true;
+    root.setAttribute("aria-busy", "true");
+    try {
+      const response = await fetch(snapshotURL, {
+        method:"POST", credentials:"same-origin", redirect:"error", cache:"no-store",
+        headers:{"Content-Type":"application/json","X-Loom-CSRF":csrf},
+        body:JSON.stringify({id}), signal:controller.signal
+      });
+      if (response.status !== 200) throw new Error("snapshot HTTP " + response.status);
+      const data = await response.json();
+      if (data.status !== "ok" || !Number.isSafeInteger(data.version) || data.version < version)
+        throw new Error("invalid snapshot");
+      if (disposed) return false;
+      updateTree(root,data.view);
+      version = data.version;
+      return true;
+    } catch(error) {
       if (!disposed) onError(error);
       return false;
     } finally {
@@ -65,7 +164,7 @@ export function attachLive(root, {endpoint, id, version, csrf, onError = console
     dispatch(button.dataset.liveEvent, button.dataset.livePayload ?? null).catch(onError);
   }
   root.addEventListener("click", click);
-  return {dispatch, dispose() {
+  return {dispatch, resync, dispose() {
     disposed = true; controller.abort(); root.removeEventListener("click", click);
     root.removeAttribute("aria-busy");
   }};
