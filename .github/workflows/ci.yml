@@ -33,6 +33,7 @@ jobs:
       - run: raco loom new /tmp/loom-smoke
       - run: cd /tmp/loom-smoke && raco loom inspect --json && raco loom test
       - run: bash examples/taskboard/smoke.sh
+      - run: bash examples/auth-demo/smoke.sh
       - run: node --test tests/live-browser.test.mjs tests/live-notify.test.mjs
       - run: bash examples/live-counter/smoke.sh
       - run: npm install --prefix tests --no-audit --no-fund
