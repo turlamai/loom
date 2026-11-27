@@ -94,4 +94,4 @@
   (define csrf (web-session-csrf current))
   (check-equal? (response-code (logout (req new-id owner good))) 403)
   (check-equal? (response-code (logout (req new-id csrf good))) 200)
-  (check-false (web-session-ref store (req new-id csrf good)))))
+  (check-false (web-session-ref store (req new-id csrf good))))
