@@ -43,9 +43,10 @@
   (void))
 (define (operation-document op)
   (define response-schema
-    (if (operation-output op)
-        (hasheq 'description "Success" 'content (json-content (model-schema (operation-output op))))
-        (hasheq 'description "Success")))
+    (cond [(operation-output op)
+           (hasheq 'description "Success" 'content (json-content (model-schema (operation-output op))))]
+          [(= (operation-status op) 204) (hasheq 'description "No content")]
+          [else (hasheq 'description "Success" 'content (json-content (hasheq)))]))
   (define base
     (hasheq 'operationId (operation-id op) 'summary (operation-summary op)
             'parameters (for/list ([name (in-list (path-parameters (operation-path op)))])
@@ -117,4 +118,13 @@
   (check-equal? (response-code (app (req #"POST" "/tasks/42" (hasheq)))) 400)
   (check-equal? (response-code (app (req #"POST" "/tasks/42" (hasheq 'title "task" 'extra #t)))) 400)
   (define bad (make-api-app (list (api-operation #"GET" "/bad" "bad" (lambda (_ data) (hasheq)) #:output output))))
-  (check-equal? (response-code (bad (req #"GET" "/bad" #f))) 500))
+  (check-equal? (response-code (bad (req #"GET" "/bad" #f))) 500)
+  (define empty (make-api-app (list (api-operation #"DELETE" "/tasks/:id" "deleteTask"
+                                     (lambda (_ data) (void)) #:status 204))))
+  (check-equal? (response-code (empty (req #"DELETE" "/tasks/42" #f))) 204)
+  (check-exn exn:fail? (lambda () (api-operation #"GET" "/:id/:id" "duplicate"
+                                   (lambda (_ data) #t))))
+  (check-exn exn:fail? (lambda () (openapi-document
+    (list op (api-operation #"GET" "/tasks/:other" "getTask" (lambda (_ data) #t))))))
+  (check-exn exn:fail? (lambda () (make-api-app
+    (list (api-operation #"GET" "/openapi.json" "reserved" (lambda (_ data) #t)))))))
