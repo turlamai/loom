@@ -1,6 +1,6 @@
 #lang racket/base
 (require web-server/http racket/string "http.rkt" "session.rkt" "cookies.rkt" "csrf.rkt")
-(provide start-web-session web-session-ref end-web-session
+(provide start-web-session web-session-ref end-web-session transition-web-session
          web-session? web-session-data web-session-csrf web-session-valid-csrf?)
 (struct web-session (data csrf) #:transparent)
 (define (start-web-session store data #:secure? [secure? #t])
@@ -24,6 +24,18 @@
   (define id (session-id req (if secure? "__Host-loom-session" "loom-dev-session")))
   (define state (and id (session-ref store id)))
   (and (web-session? state) state))
+;; Invoke only after credential verification and CSRF validation. The expected
+;; session must be the exact object previously obtained from this request.
+;; Return #f if it expired, was revoked or another transition won.
+;; On success return a list (new-id new-state Set-Cookie-header).
+(define (transition-web-session store req expected data #:secure? [secure? #t])
+  (unless (web-session? expected)
+    (raise-argument-error 'transition-web-session "web-session?" expected))
+  (define name (if secure? "__Host-loom-session" "loom-dev-session"))
+  (define id (session-id req name))
+  (define next-state (web-session data (csrf-token)))
+  (define next-id (and id (session-replace! store id expected next-state)))
+  (and next-id (list next-id next-state (set-cookie-header name next-id #:secure? secure?))))
 (define (end-web-session store req #:secure? [secure? #t])
   (define name (if secure? "__Host-loom-session" "loom-dev-session"))
   (define id (session-id req name))
@@ -46,5 +58,18 @@
   (check-false (web-session-valid-csrf? state (list (web-session-csrf state) "duplicate")))
   (check-false (web-session-valid-csrf? state (list (csrf-token))))
   (check-false (web-session-ref store (req (string-append "__Host-loom-session=" id "; __Host-loom-session=invalid"))))
-  (check-true (header? (end-web-session store valid)))
-  (check-false (web-session-ref store valid)))
+  (define changed (transition-web-session store valid state 'authenticated))
+  (check-equal? (length changed) 3)
+  (define next-id (car changed))
+  (define next-state (cadr changed))
+  (check-not-equal? next-id id)
+  (check-not-equal? (web-session-csrf next-state) (web-session-csrf state))
+  (check-false (web-session-valid-csrf? next-state (list (web-session-csrf state))))
+  (check-false (web-session-ref store valid))
+  (check-false (transition-web-session store valid state 'duplicate))
+  (define next-request (req (string-append "__Host-loom-session=" next-id)))
+  (check-eq? (web-session-ref store next-request) next-state)
+  (check-equal? (web-session-data next-state) 'authenticated)
+  (check-true (header? (caddr changed)))
+  (check-true (header? (end-web-session store next-request)))
+  (check-false (web-session-ref store next-request)))
