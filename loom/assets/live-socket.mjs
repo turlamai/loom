@@ -1,12 +1,14 @@
 // One request in flight; never replay an uncertain mutation.
 export function connectLiveSocket({endpoint,id,csrf,timeout=5000}) {
   const url = new URL(endpoint,location.href);
+  if (url.protocol==="http:") url.protocol="ws:";
+  if (url.protocol==="https:") url.protocol="wss:";
   if (!["ws:","wss:"].includes(url.protocol) ||
       url.host !== location.host ||
       url.protocol !== (location.protocol==="https:"?"wss:":"ws:") ||
       url.username || url.password || url.hash)
     throw new TypeError("Expected same-origin WebSocket endpoint");
-  if (!/^[0-9a-f]{64}$/.test(id) || !/^[0-9a-f]{64}$/.test(csrf) ||
+  if (typeof id!=="string" || typeof csrf!=="string" || !/^[0-9a-f]{64}$/.test(id) || !/^[0-9a-f]{64}$/.test(csrf) ||
       !Number.isInteger(timeout) || timeout<100 || timeout>60000)
     throw new TypeError("Invalid live socket configuration");
   let socket, pending, opening, disposed=false;
