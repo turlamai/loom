@@ -1,0 +1,5 @@
+# Live channel protocol / 实时通道协议
+
+`make-live-channel` accepts a registry and a fresh session lookup callback. Send UTF-8 JSON bytes: first `{ "type": "bind", "id": "...", "csrf": "..." }`, then `{ "type": "snapshot" }` or `{ "type": "event", "version": 0, "event": "inc", "payload": null }`. The channel binds one owned instance, returns the existing live result JSON, and rejects revoked sessions. Errors use status `error`. Never replay a mutation after uncertain delivery; bind again and obtain authoritative state. The network adapter must validate exact allowed Origin, enforce message and connection limits before buffering, and terminate on forbidden, closed or instance-not-found errors. This module is not a WebSocket server and does not provide heartbeat or push delivery.
+
+`make-live-channel` 接收 registry 和每次重新查询会话的回调。首次发送 bind 消息绑定实例与 CSRF，随后发送 snapshot 或 event 消息。返回已有 Live JSON 格式，拒绝失效会话及越权实例。网络适配层必须检查 Origin，在缓冲前限制消息及连接数量，并在禁止访问、关闭或实例不存在时终止连接。传输结果不确定时不得重放修改事件，应重新绑定并同步权威状态。本模块不包含 WebSocket 网络服务、心跳或主动推送。
