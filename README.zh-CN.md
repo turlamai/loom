@@ -100,3 +100,7 @@ raco loom dev
 `make-live-snapshot-handler` 提供只读 POST JSON 接口，接收 `{id}`，使用与事件请求相同的会话 Cookie 和 `X-Loom-CSRF` 请求头。在 `attachLive` 中配置 `snapshotEndpoint`，通过 `client.resync()` 在网络结果不确定时获取服务端权威视图及版本，不自动重放事件。Live Counter 提供 Refresh state 按钮。实例过期后需重新挂载，尚未实现自动重连及服务端推送。
 
 在 `attachLive` 中设置 `autoRecover: true` 与 `onRecovered` 可启用自动恢复。配置快照接口后，事件失败将阻止后续事件，直到只读快照同步成功。依次延迟 250、1000、3000 ms 重试，浏览器 online 事件启动新一轮尝试，卸载取消重试。Live Counter 可通过 `/?auto=1` 体验。不会重放写操作或自动重新挂载过期实例，不是 WebSocket 重连。
+
+### Live 变更通知总线
+
+`loom/live-bus` 提供容量受限的单进程主题订阅与合并式变更通知。可信应用代码必须在订阅前授权主题访问，归属 ID 用于取消订阅与批量撤销，本身不代表主题访问权限。每个订阅使用单消费者，通过 `sync` 等待 `live-next-evt`，获取 `changed` 或 `closed`。通知不携带业务数据、不持久化；收到通知后应读取权威状态。需显式清理订阅。尚未包含网络传输及自动会话撤销。
