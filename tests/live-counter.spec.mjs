@@ -21,3 +21,16 @@ test("counter updates without navigation and isolates browser sessions", async (
   await expect(page.locator("#count")).toHaveText("0");
   await expect(page.locator("#error")).toHaveText("");
 });
+
+test("live update preserves focused input, selection and node identity",async ({page})=>{
+ await page.goto("http://127.0.0.1:18881/");
+ await expect(page.locator("html")).toHaveAttribute("data-live-ready","true");
+ const draft=page.locator("#draft");
+ await draft.fill("unfinished draft");
+ await draft.evaluate(n=>{n.focus();n.setSelectionRange(2,7);window.__draft=n;});
+ await page.getByRole("button",{name:"Increment"}).evaluate(n=>n.click());
+ await expect(page.locator("#count")).toHaveText("1");
+ await expect(draft).toHaveValue("unfinished draft");
+ await expect(draft).toBeFocused();
+ expect(await draft.evaluate(n=>[n===window.__draft,n.selectionStart,n.selectionEnd])).toEqual([true,2,7]);
+});
