@@ -8,6 +8,8 @@
     #:render (lambda (n)
       (element 'section
         (element 'p #:attrs '((id "count")) n)
+        (element 'label #:attrs '((for "draft")) "Local draft")
+        (element 'input #:attrs '((id "draft") (type "text") (value "") (data-live-key "draft")))
         (element 'button #:attrs '((type "button") (data-live-event "inc")) "Increment")
         (element 'button #:attrs '((type "button") (data-live-event "dec")) "Decrement")))
     #:events (hash "inc" (lambda (n p) (add1 n)) "dec" (lambda (n p) (sub1 n)))))
