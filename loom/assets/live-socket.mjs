@@ -1,5 +1,5 @@
 // One request in flight; never replay an uncertain mutation.
-export function connectLiveSocket({endpoint,id,csrf,timeout=5000}) {
+export function connectLiveSocket({endpoint,id,csrf,timeout=5000,onDisconnect=()=>{}}) {
   const url = new URL(endpoint,location.href);
   if (url.protocol==="http:") url.protocol="ws:";
   if (url.protocol==="https:") url.protocol="wss:";
@@ -12,12 +12,13 @@ export function connectLiveSocket({endpoint,id,csrf,timeout=5000}) {
       !Number.isInteger(timeout) || timeout<100 || timeout>60000)
     throw new TypeError("Invalid live socket configuration");
   let socket, pending, opening, disposed=false;
-  function invalidate(ws,error) {
+  function invalidate(ws,error,notify=true) {
     if (socket!==ws) return;
     socket=undefined;
     if (pending) {const p=pending;pending=undefined;clearTimeout(p.timer);p.reject(error);}
     if (opening) {const p=opening;opening=undefined;clearTimeout(p.timer);p.reject(error);}
     ws.close();
+    if(notify&&!disposed) onDisconnect(error);
   }
   function request(message) {
     const ws=socket;
@@ -59,7 +60,7 @@ export function connectLiveSocket({endpoint,id,csrf,timeout=5000}) {
     reconnect,
     snapshot:()=>request({type:"snapshot"}),
     dispatch:(version,event,payload=null)=>request({type:"event",version,event,payload}),
-    disconnect:()=>{if(socket)invalidate(socket,new Error("Disconnected"));},
-    dispose:()=>{disposed=true;if(socket)invalidate(socket,new Error("Disposed"));}
+    disconnect:()=>{if(socket)invalidate(socket,new Error("Disconnected"),false);},
+    dispose:()=>{disposed=true;if(socket)invalidate(socket,new Error("Disposed"),false);}
   };
 }
