@@ -120,3 +120,5 @@ Run `racket examples/live-counter/app.rkt` and visit http://127.0.0.1:8080/. Thi
 ### Live state recovery
 
 `make-live-snapshot-handler` provides a read-only POST JSON endpoint accepting `{id}` with the same session cookie and `X-Loom-CSRF` header as event requests. Configure `snapshotEndpoint` in `attachLive` and call `client.resync()` to retrieve the authoritative view and version after an ambiguous network failure. Events are never automatically replayed. The Live Counter includes a Refresh state control. Expired instances require remounting; automatic reconnect and server push are not implemented.
+
+Opt in with `autoRecover: true` and `onRecovered` in `attachLive`. Failed event requests block further events until a read-only snapshot succeeds (when configured). Recovery retries at 250, 1000 and 3000 ms after successive failures; an online event starts a new retry cycle. Disposal cancels retries. Try `/?auto=1` in Live Counter. This does not replay mutations or remount expired instances and is not WebSocket reconnect.

@@ -53,3 +53,27 @@ test("lost event response recovers without replaying mutation",async ({page})=>{
   await page.getByRole("button",{name:"Increment"}).click();
   await expect(page.locator("#count")).toHaveText("2");
 });
+
+test("automatic recovery reads snapshots but never replays an event",async ({page})=>{
+ await page.goto("http://127.0.0.1:18881/?auto=1");
+ await expect(page.locator("html")).toHaveAttribute("data-live-ready","true");
+ let events=0, snapshots=0;
+ await page.route("**/live",async route=>{
+   events++;
+   const response=await route.fetch();
+   expect(response.status()).toBe(200);
+   await route.abort();
+ });
+ await page.route("**/live/snapshot",async route=>{
+   snapshots++;
+   if(snapshots===1) await route.abort();
+   else await route.continue();
+ });
+ await page.getByRole("button",{name:"Increment"}).click();
+ await expect(page.locator("#error")).not.toHaveText("");
+ await page.getByRole("button",{name:"Increment"}).click();
+ await expect(page.locator("#count")).toHaveText("1");
+ await expect(page.locator("#error")).toHaveText("");
+ expect(events).toBe(1);
+ expect(snapshots).toBe(2);
+});
