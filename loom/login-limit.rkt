@@ -1,5 +1,5 @@
 #lang racket/base
-(provide make-login-limiter login-attempt! login-limiter-reset!)
+(provide make-login-limiter login-attempt! login-limiter-reset! make-login-attempt-policy)
 (struct bucket (count deadline) #:transparent)
 (struct limiter (entries lock limit window capacity clock) #:transparent)
 ;; Fixed windows, process local. Keys must be derived by trusted application
@@ -50,6 +50,27 @@
   (unless (valid-key? key) (raise-argument-error 'login-limiter-reset! "bounded nonempty string" key))
   (call-with-semaphore (limiter-lock l)
     (lambda () (hash-remove! (limiter-entries l) key))))
+;; Independent quotas; consume source first, so a blocked source cannot
+;; exhaust arbitrary account buckets. Successful logins do not reset quotas.
+;; The application supplies canonical account IDs and trusted source IDs.
+(define (make-login-attempt-policy #:account-key account-key #:source-key source-key
+                                  #:account-limiter [accounts (make-login-limiter)]
+                                  #:source-limiter [sources (make-login-limiter #:limit 30)])
+  (unless (and (procedure? account-key) (procedure-arity-includes? account-key 2)
+               (procedure? source-key) (procedure-arity-includes? source-key 2)
+               (limiter? accounts) (limiter? sources) (not (eq? accounts sources)))
+    (error 'make-login-attempt-policy "independent limiters and key callbacks required"))
+  (lambda (req body)
+    (define source (source-key req body))
+    (cond
+      [(not (valid-key? source)) #f]
+      [else
+       (define permit (login-attempt! sources source))
+       (cond
+         [(not (eq? permit #t)) permit]
+         [else
+          (define account (account-key req body))
+          (if (valid-key? account) (login-attempt! accounts account) #f)])])))
 (module+ test
   (require rackunit)
   (define now 0)
@@ -71,4 +92,18 @@
   (for ([i (in-range 8)])
     (thread (lambda () (channel-put ch (login-attempt! concurrent "same")))))
   (check-equal? (for/sum ([i (in-range 8)]) (if (eq? (channel-get ch) #t) 1 0)) 1)
-  (check-exn exn:fail? (lambda () (login-attempt! l ""))))
+  (check-exn exn:fail? (lambda () (login-attempt! l "")))
+  (define account-reads 0)
+  (define policy (make-login-attempt-policy
+    #:source-key (lambda (source body) source)
+    #:account-key (lambda (source body) (set! account-reads (add1 account-reads)) body)
+    #:source-limiter (make-login-limiter #:limit 2 #:window 60 #:clock (lambda () 0))
+    #:account-limiter (make-login-limiter #:limit 1 #:window 60 #:clock (lambda () 0))))
+  (check-eq? (policy "source-a" "alice") #t)
+  (check-equal? (policy "source-b" "alice") 60)
+  (check-eq? (policy "source-a" "bob") #t)
+  (check-equal? (policy "source-a" "charlie") 60)
+  (check-equal? account-reads 3)
+  (check-eq? (policy "source-c" "charlie") #t)
+  (check-false (policy #f "alice"))
+  (check-false (policy "source-d" #f)))
