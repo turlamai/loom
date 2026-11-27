@@ -104,3 +104,7 @@ raco loom dev
 ### Live 变更通知总线
 
 `loom/live-bus` 提供容量受限的单进程主题订阅与合并式变更通知。可信应用代码必须在订阅前授权主题访问，归属 ID 用于取消订阅与批量撤销，本身不代表主题访问权限。每个订阅使用单消费者，通过 `sync` 等待 `live-next-evt`，获取 `changed` 或 `closed`。通知不携带业务数据、不持久化；收到通知后应读取权威状态。需显式清理订阅。尚未包含网络传输及自动会话撤销。
+
+### Live HTTP 通知
+
+`loom/live-notify` 提供 `make-live-notification-handler`，接收包含 `{id}` 的 POST JSON 请求，校验会话 Cookie 及 `X-Loom-CSRF` 请求头。可信 `(session id)` 回调授权实例访问并解析主题，等待结束后再次授权。临时订阅退出时释放，默认等待 15 秒，最大 25 秒。响应为 `changed` 或 `timeout`，两者均应读取权威状态，因为请求之间的通知不持久化。容量不足返回 503。尚未包含浏览器轮询客户端及 WebSocket 传输。
