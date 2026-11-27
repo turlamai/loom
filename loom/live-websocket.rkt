@@ -11,7 +11,8 @@
     (error 'serve-live-websocket "invalid transport configuration"))
   (define slots (make-semaphore maximum))
   (define (allowed? req)
-    (and (equal? (request-header-values req #"Origin") (list (string->bytes/utf-8 origin)))
+    (and (request? req)
+         (equal? (request-header-values req #"Origin") (list (string->bytes/utf-8 origin)))
          (equal? (map path/param-path (url-path (request-uri req))) '("live"))
          (web-session-ref store req #:secure? secure?)))
   (define (handle conn req)
@@ -42,4 +43,6 @@
                         (ws-close! conn #:status 1008)
                         (loop))])))))
          (lambda () (semaphore-post slots) (ws-close! conn)))]))
-  (ws-serve handle #:port port #:listen-ip "127.0.0.1"))
+  (ws-serve handle
+            #:conn-headers (lambda (_line _headers req) (values '() req))
+            #:port port #:listen-ip "127.0.0.1"))
