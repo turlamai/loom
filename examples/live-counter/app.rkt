@@ -37,6 +37,7 @@
          (body (h1 "Live Counter")
                (div ((id "live") (data-id ,id) (data-csrf ,owner) (data-version "0"))
                     ,(live-result-view result))
+               (button ((id "resync") (type "button")) "Refresh state")
                (p ((id "error") (role "status")) "")))))
   (struct-copy response resp
     [headers (append (response-headers resp) (list (header #"Cache-Control" #"no-store"))
@@ -45,7 +46,8 @@
   (make-app (list (route #"GET" "/" home)
                   (route #"GET" "/live.mjs" (asset browser-runtime))
                   (route #"GET" "/boot.mjs" (asset bootstrap))
-                  (route #"POST" "/live" (make-live-event-handler sessions instances #:secure? #f)))
+                  (route #"POST" "/live" (make-live-event-handler sessions instances #:secure? #f))
+                  (route #"POST" "/live/snapshot" (make-live-snapshot-handler sessions instances #:secure? #f)))
             #:middleware (list security-headers)))
 (module+ main
   (serve app #:port (string->number (or (getenv "LOOM_LIVE_PORT") "8080"))))
