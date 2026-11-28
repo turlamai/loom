@@ -16,8 +16,9 @@
   (and (hash? msg) (= (hash-count msg) (length keys))
        (andmap (lambda (k) (hash-has-key? msg k)) keys)))
 (define (err name) (hasheq 'status "error" 'error name))
-(define (make-live-channel registry lookup #:max-bytes [limit 16384])
+(define (make-live-channel registry lookup #:max-bytes [limit 16384] #:on-bind [on-bind (lambda (_state _id) (void))])
   (unless (and (procedure? lookup) (procedure-arity-includes? lookup 0)
+               (procedure? on-bind) (procedure-arity-includes? on-bind 2)
                (exact-integer? limit) (<= 1 limit 65536))
     (error 'make-live-channel "invalid channel configuration"))
   (define owner #f)
@@ -46,7 +47,8 @@
               (define id (hash-ref msg 'id))
               (define result (registry-snapshot registry (web-session-csrf state) id))
               (if result
-                  (begin (set! owner (web-session-csrf state)) (set! instance id)
+                  (begin (on-bind state id)
+                         (set! owner (web-session-csrf state)) (set! instance id)
                          (live-result-json result))
                   (close! "instance-not-found"))])]
           [(and (shape? msg '(type)) (equal? (hash-ref msg 'type) "snapshot"))
