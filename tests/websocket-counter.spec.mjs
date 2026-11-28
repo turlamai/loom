@@ -91,6 +91,12 @@ test("DOM runtime binds, renders events, recovers and preserves state", async ({
     window.WebSocket=FixtureSocket;
     const {attachLiveSocket}=await import("/assets/live-socket-dom.mjs");
     window.recoveries=0;
+    window.heartbeatRequests=0;
+    const send=Native.prototype.send;
+    FixtureSocket.prototype.send=function(raw){
+      if(JSON.parse(raw).type==="snapshot")window.heartbeatRequests++;
+      return send.call(this,raw);
+    };
     window.socketClient=attachLiveSocket(root,{endpoint:"/live",...session,
       heartbeat:1000,onRecovered:()=>window.recoveries++,onError:()=>{}});
     if(!await window.socketClient.connected)throw new Error("initial bind failed");
@@ -98,6 +104,8 @@ test("DOM runtime binds, renders events, recovers and preserves state", async ({
   await expect(page.locator("#socket-root p")).toHaveText("0");
   expect(await page.evaluate(()=>window.socketClient.dispatch("inc"))).toBe(true);
   await expect(page.locator("#socket-root p")).toHaveText("1");
+  await expect.poll(()=>page.evaluate(()=>window.heartbeatRequests)).toBeGreaterThan(0);
+  await expect(page.locator("#socket-root")).not.toHaveAttribute("aria-busy","true");
   await page.evaluate(()=>window.lastSocket.close());
   await expect.poll(()=>page.evaluate(()=>window.recoveries)).toBe(2);
   await expect(page.locator("#socket-root p")).toHaveText("1");
