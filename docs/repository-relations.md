@@ -1,0 +1,5 @@
+# Repository associations / 仓储关系
+
+Use `(make-association tasks projects #:foreign-key 'project_id)` to describe a child-to-parent relationship. The child field must have the same type as the parent's declared primary key. `repository-parent` returns the referenced row or `#f` for a missing optional foreign key or missing parent. `repository-children` accepts a complete parent row, optional `#:where`, `#:limit`, and `#:offset`; the association controls the foreign-key filter and rejects attempts to override it. `repository-child-count` counts matching children. All queries are explicit and parameterized. There is no lazy loading, eager loading, cascade, or implicit authorization; enforce referential integrity with database migrations and authorize each operation separately.
+
+通过 `make-association` 声明子表外键与父表主键的关系，双方字段类型必须一致。`repository-parent` 查询父记录；可选外键缺失或父记录不存在时返回 `#f`。`repository-children` 支持附加条件与分页，关联外键条件不可覆盖。`repository-child-count` 统计子记录。查询显式执行并绑定参数；不自动延迟加载、预加载或级联删除，也不代替访问授权。数据库外键约束由迁移管理。
