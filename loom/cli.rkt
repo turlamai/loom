@@ -33,7 +33,7 @@
       (begin (write-json (hasheq 'schema_version 1 'applied applied)) (newline))
       (if (null? applied)
           (displayln "Database is up to date.")
-          (printf "Applied migrations: ~a\\n" applied))))
+          (printf "Applied migrations: ~a\n" applied))))
 (define (run-cli args)
   (cond
     [(equal? args '("doctor"))
