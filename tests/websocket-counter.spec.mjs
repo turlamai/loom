@@ -46,7 +46,17 @@ test("rejects unexpected Origin even with a valid session cookie", async ({page}
   await page.goto(base);
   // Cookies are scoped to the host, not the port. The alternate HTTP
   // listener therefore presents the same cookie but a different Origin.
-  await page.goto("http://127.0.0.1:18881/");
+  const foreign = "http://127.0.0.1:18881/origin-probe";
+  // Isolate the server Origin policy from the other application's CSP.
+  // Only the document is synthetic; the WebSocket handshake is real.
+  const before = await page.context().cookies(base);
+  expect(before.some(c => c.name === "loom-dev-session")).toBe(true);
+  await page.route(foreign, route => route.fulfill({
+    contentType: "text/html", body: "<!doctype html><title>Origin probe</title>"
+  }));
+  await page.goto(foreign);
+  expect(await page.evaluate(() => location.origin)).toBe("http://127.0.0.1:18881");
+  expect(await page.context().cookies(base)).toEqual(before);
   const code = await page.evaluate(() => new Promise((resolve,reject) => {
     const ws = new WebSocket("ws://127.0.0.1:18885/live");
     const timer = setTimeout(()=>{ws.close();reject(new Error("origin rejection timeout"));},5000);
