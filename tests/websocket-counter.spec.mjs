@@ -114,3 +114,34 @@ test("DOM runtime binds, renders events, recovers and preserves state", async ({
   await page.evaluate(()=>window.socketClient.dispose());
   expect(await page.evaluate(()=>window.socketClient.dispatch("inc"))).toBe(false);
 });
+
+test("server invalidation refreshes another browser without heartbeat", async ({browser}) => {
+  const a=await browser.newContext(), b=await browser.newContext();
+  try {
+    const pa=await a.newPage(), pb=await b.newPage();
+    for(const p of [pa,pb]){
+      await p.goto(base+"/shared");
+      await p.evaluate(async()=>{
+        const session=JSON.parse(document.body.innerText);
+        const root=document.createElement("div");root.id="shared";document.body.replaceChildren(root);
+        const Native=window.WebSocket;
+        window.WebSocket=class extends Native {
+          constructor(url){super("ws://127.0.0.1:18885"+new URL(url).pathname);}
+        };
+        const {attachLiveSocket}=await import("/assets/live-socket-dom.mjs");
+        window.client=attachLiveSocket(root,{endpoint:"/live",...session,heartbeat:0});
+        if(!await window.client.connected)throw new Error("bind failed");
+      });
+    }
+    const before=Number(await pa.locator("#shared p").innerText());
+    await expect(pb.locator("#shared p")).toHaveText(String(before));
+    expect(await pa.evaluate(()=>window.client.dispatch("publish"))).toBe(true);
+    await expect(pa.locator("#shared p")).toHaveText(String(before+1));
+    await expect(pb.locator("#shared p")).toHaveText(String(before+1));
+    await pb.evaluate(()=>window.client.dispose());
+    await expect(pa.locator("#shared")).not.toHaveAttribute("aria-busy","true");
+    expect(await pa.evaluate(()=>window.client.dispatch("publish"))).toBe(true);
+    await expect(pa.locator("#shared p")).toHaveText(String(before+2));
+    await expect(pb.locator("#shared p")).toHaveText(String(before+1));
+  } finally {await a.close();await b.close();}
+});

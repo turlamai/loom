@@ -7,13 +7,17 @@ export function attachLiveSocket(root,{endpoint,id,csrf,version=0,timeout=5000,
     onError=console.error,onRecovered=()=>{},autoRecover=true,heartbeat=15000}){
   if(!Number.isInteger(heartbeat)||heartbeat<0||(heartbeat!==0&&(heartbeat<1000||heartbeat>60000)))
     throw new TypeError("Invalid heartbeat interval");
-  const transport=connectLiveSocket({endpoint,id,csrf,timeout,onDisconnect(error){
+  if(!Number.isSafeInteger(version)||version<0)throw new TypeError("Invalid initial version");
+  const transport=connectLiveSocket({endpoint,id,csrf,timeout,onInvalidate(){
+    if(disposed)return;
+    dirty=true;queueRefresh();
+  },onDisconnect(error){
     if(disposed)return;
     ready=false;
     if(!busy){attempts=0;schedule();onError(error);}
   }});
   const delays=[250,1000,3000];
-  let disposed=false,busy=false,ready=false,timer=null,attempts=0;
+  let disposed=false,busy=false,ready=false,timer=null,attempts=0,dirty=false,refreshTimer=null;
   function apply(data){
     if(!["ok","stale"].includes(data.status)||!Number.isSafeInteger(data.version)||data.version<version)
       throw new Error("Invalid live socket result");
@@ -33,12 +37,25 @@ export function attachLiveSocket(root,{endpoint,id,csrf,version=0,timeout=5000,
       if(!disposed)onError(error);
       return false;
     }finally{
-      busy=false;if(!disposed){root.removeAttribute("aria-busy");schedule();}
+      busy=false;if(!disposed){root.removeAttribute("aria-busy");schedule();queueRefresh();}
     }
+  }
+  function queueRefresh(){
+    if(disposed||busy||!ready||!dirty||refreshTimer!==null)return;
+    refreshTimer=setTimeout(()=>{
+      refreshTimer=null;
+      if(disposed||busy||!ready||!dirty)return;
+      dirty=false;
+      void run(async()=>{
+        const data=await transport.snapshot();
+        if(data.status!=="ok")throw new Error("Invalidation snapshot rejected");
+        return apply(data);
+      });
+    },0);
   }
   async function resync(){
     return run(async()=>{
-      ready=false;transport.disconnect();
+      ready=false;dirty=false;transport.disconnect();
       const data=await transport.reconnect();
       if(!apply(data))return false;
       ready=true;attempts=0;
@@ -75,6 +92,7 @@ export function attachLiveSocket(root,{endpoint,id,csrf,version=0,timeout=5000,
   return {connected,dispatch,resync,dispose(){
     disposed=true;ready=false;if(timer!==null)clearTimeout(timer);
     if(pulse!==null)clearInterval(pulse);
+    if(refreshTimer!==null)clearTimeout(refreshTimer);
     transport.dispose();root.removeEventListener("click",click);
     if(autoRecover)globalThis.removeEventListener("online",online);
     root.removeAttribute("aria-busy");
