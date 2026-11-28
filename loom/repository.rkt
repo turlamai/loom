@@ -185,7 +185,7 @@
       (check-equal? (repository-child-count c assoc p) 2)
       (check-equal? (repository-children c assoc q) (list d))
       (check-exn exn:fail? (lambda () (repository-children c assoc p #:where (hasheq 'project_id 2))))
-      (check-exn exn:fail? (lambda () (make-association entries projects #:foreign-key 'done))))))
+      (check-exn exn:fail? (lambda () (make-association entries projects #:foreign-key 'done)))))
   (with-db (lambda () (open-sqlite 'memory))
     (lambda (c)
       (query-exec c "CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, done INTEGER NOT NULL, note TEXT)")
