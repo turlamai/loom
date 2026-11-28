@@ -1,6 +1,6 @@
 #lang racket/base
 (require db racket/list racket/string "model.rkt")
-(provide make-repository repository-insert! repository-get repository-update! repository-delete! repository-list)
+(provide make-repository repository-insert! repository-get repository-update! repository-delete! repository-list repository-find repository-count)
 (struct repository (schema table key names) #:transparent)
 (define (identifier name)
   (unless (and (symbol? name) (regexp-match? #rx"^[a-z_][a-z0-9_]*$" (symbol->string name)))
@@ -78,6 +78,49 @@
                                (columns (repository-names r)) (table-name r) (key-name r)
                                (placeholder engine 1) (placeholder engine 2))
                    limit offset)))
+;; Equality filters are schema-checked and values are always bound.
+;; SQL NULL is explicit via sql-null, not the boolean #f.
+(define (filter-clause engine r filters)
+  (unless (hash? filters) (raise-argument-error 'repository-query "hash?" filters))
+  (for ([name (in-hash-keys filters)])
+    (unless (memq name (repository-names r)) (error 'repository-query "unknown filter field")))
+  (define parts '())
+  (define args '())
+  (for ([f (in-list (model-fields (repository-schema r)))]
+        #:when (hash-has-key? filters (field-name f)))
+    (define n (field-name f))
+    (define v (hash-ref filters n))
+    (cond [(sql-null? v)
+           (when (field-required? f) (error 'repository-query "required field cannot be null"))
+           (set! parts (cons (format "~a IS NULL" (identifier n)) parts))]
+          [else
+           (unless (null? (validate-model (make-model 'filter (list f)) (hasheq n v)))
+             (error 'repository-query "invalid filter value"))
+           (set! args (cons (encode engine v) args))
+           (set! parts (cons (format "~a = ~a" (identifier n) (placeholder engine (length args))) parts))]))
+  (values (if (null? parts) "" (string-append " WHERE " (string-join (reverse parts) " AND ")))
+          (reverse args)))
+(define (repository-find conn r #:where [filters (hasheq)] #:order-by [order (repository-key r)]
+                         #:descending? [descending? #f] #:limit [limit 100] #:offset [offset 0])
+  (define engine (dialect conn))
+  (unless (and (memq order (repository-names r)) (boolean? descending?)
+               (exact-positive-integer? limit) (<= limit 1000)
+               (exact-nonnegative-integer? offset))
+    (error 'repository-find "invalid ordering or pagination"))
+  (define-values (where args) (filter-clause engine r filters))
+  (define direction (if descending? "DESC" "ASC"))
+  (define ordering (string-append (identifier order) " " direction
+    (if (eq? order (repository-key r)) "" (string-append ", " (key-name r) " ASC"))))
+  (map (lambda (row) (decode engine r row))
+       (apply query-rows conn
+         (format "SELECT ~a FROM ~a~a ORDER BY ~a LIMIT ~a OFFSET ~a"
+                 (columns (repository-names r)) (table-name r) where ordering
+                 (placeholder engine (add1 (length args))) (placeholder engine (+ 2 (length args))))
+         (append args (list limit offset)))))
+(define (repository-count conn r #:where [filters (hasheq)])
+  (define engine (dialect conn))
+  (define-values (where args) (filter-clause engine r filters))
+  (apply query-value conn (format "SELECT count(*) FROM ~a~a" (table-name r) where) args))
 (module+ test
   (require rackunit "db.rkt")
   (define-model task [id integer #t] [title string #t] [done boolean #t] [note string #f])
@@ -92,6 +135,16 @@
       (repository-update! c r (hash-set item 'done #t))
       (check-equal? (repository-list c r #:limit 1) (list (hash-set item 'done #t)))
       (check-equal? (repository-list c r #:offset 1) '())
+      (repository-insert! c r (hasheq 'id 2 'title "second" 'done #f 'note "note"))
+      (repository-insert! c r (hasheq 'id 3 'title "second" 'done #f))
+      (check-equal? (map (lambda (v) (hash-ref v 'id)) (repository-find c r #:where (hasheq 'done #f) #:order-by 'title #:descending? #t)) '(2 3))
+      (check-equal? (repository-count c r #:where (hasheq 'note sql-null)) 2)
+      (check-equal? (repository-find c r #:where (hasheq 'title (hash-ref item 'title))) (list (hash-set item 'done #t)))
+      (check-equal? (repository-count c r #:where (hasheq 'done #f 'title "second")) 2)
+      (check-equal? (map (lambda (v) (hash-ref v 'id)) (repository-find c r #:limit 1 #:offset 1)) '(2))
+      (check-exn exn:fail? (lambda () (repository-find c r #:where (hasheq 'done "false"))))
+      (check-exn exn:fail? (lambda () (repository-count c r #:where (hasheq 'unknown 1))))
+      (check-exn exn:fail? (lambda () (repository-find c r #:order-by '|id;drop|)))
       (repository-delete! c r 1)
       (check-false (repository-get c r 1))))
   (check-exn exn:fail? (lambda () (make-repository task #:table '|bad;name| #:key 'id))))

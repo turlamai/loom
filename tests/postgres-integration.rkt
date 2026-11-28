@@ -1,5 +1,5 @@
 #lang racket/base
-(require rackunit loom/db loom/model loom/repository loom/migrate loom/db-pool (only-in db start-transaction))
+(require rackunit loom/db loom/model loom/repository loom/migrate loom/db-pool (only-in db start-transaction sql-null))
 (module+ test
   (define-model task [id integer #t] [title string #t] [done boolean #t] [note string #f])
   (define r (make-repository task #:table 'tasks #:key 'id))
@@ -29,6 +29,16 @@
           (error 'test "rollback"))))))))
       (check-equal? (length (applied-migrations c)) 1)
       (check-false (query-value c "SELECT to_regclass('rollback_test') IS NOT NULL"))
+      (repository-insert! c r (hasheq 'id 2 'title "second" 'done #f 'note "note"))
+      (repository-insert! c r (hasheq 'id 3 'title "second" 'done #f))
+      (check-equal? (repository-count c r #:where (hasheq 'done #f 'title "second")) 2)
+      (check-equal? (repository-count c r #:where (hasheq 'note sql-null)) 2)
+      (check-equal? (repository-find c r #:where (hasheq 'title (hash-ref item 'title))) (list item))
+      (check-equal? (map (lambda (v) (hash-ref v 'id))
+        (repository-find c r #:where (hasheq 'title "second") #:order-by 'title #:descending? #t #:limit 1 #:offset 1)) '(3))
+      (check-exn exn:fail? (lambda () (repository-find c r #:where (hasheq 'done "false"))))
+      (repository-delete! c r 2)
+      (repository-delete! c r 3)
       (repository-delete! c r 1)
       (check-false (repository-get c r 1))))
   ;; Two independent connections contend on the same migration ledger.
