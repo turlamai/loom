@@ -1,6 +1,6 @@
 #lang info
 (define collection 'multi)
-(define deps '("base" "web-server-lib" "net-lib" "db-lib" "crypto-lib"))
+(define deps '("base" "web-server-lib" "net-lib" "db-lib" "crypto-lib" "rfc6455"))
 (define build-deps '("rackunit-lib"))
 (define pkg-desc "Racket-first full-stack web framework (development prototype)")
 (define version "0.0.1")
