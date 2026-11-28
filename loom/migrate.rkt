@@ -1,7 +1,8 @@
 #lang racket/base
 (require db racket/list)
 (provide migration migration? migrate! applied-migrations)
-;; Explicit, append-only migration ledger. Run from a single deployment process.
+;; Explicit, append-only migration ledger. PostgreSQL callers serialize
+;; through a transaction-scoped advisory lock; SQLite uses BEGIN IMMEDIATE.
 (struct migration (version description up) #:transparent)
 (define (validate-plan plan)
   (unless (and (list? plan)
@@ -24,8 +25,17 @@
   (read-ledger conn))
 (define (migrate! conn plan)
   (validate-plan plan)
+  (when (in-transaction? conn)
+    (error 'migrate! "requires a top-level transaction"))
+  (define dialect (dbsystem-name (connection-dbsystem conn)))
+  (unless (memq dialect '(postgresql sqlite3))
+    (error 'migrate! "unsupported migration database"))
   (call-with-transaction conn
     (lambda ()
+      (when (eq? dialect 'postgresql)
+        ;; Stable Loom namespace; lock is released on commit or rollback.
+        ;; Acquire before creating or reading the ledger.
+        (query-exec conn "SELECT pg_advisory_xact_lock(1279872845, 1)"))
       (ensure-ledger! conn)
       (define recorded (read-ledger conn))
       (define expected (map (lambda (m) (vector (migration-version m) (migration-description m))) plan))
@@ -37,7 +47,9 @@
         (if (eq? (dbsystem-name (connection-dbsystem conn)) 'postgresql)
             (query-exec conn "INSERT INTO loom_schema_migrations (version, description) VALUES ($1, $2)" (migration-version m) (migration-description m))
             (query-exec conn "INSERT INTO loom_schema_migrations (version, description) VALUES (?, ?)" (migration-version m) (migration-description m)))
-        (migration-version m)))))
+        (migration-version m)))
+    #:isolation (if (eq? dialect 'postgresql) 'read-committed #f)
+    #:option (if (eq? dialect 'sqlite3) 'immediate #f)))
 (module+ test
   (require rackunit "db.rkt")
   (with-db (lambda () (open-sqlite 'memory))
