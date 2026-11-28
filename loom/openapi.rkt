@@ -1,15 +1,18 @@
 #lang racket/base
-(require racket/list racket/string "main.rkt" "model.rkt" "http.rkt" web-server/http)
-(provide api-operation make-api-app openapi-document)
-(struct operation (method path id summary input output status handler) #:transparent)
+(require racket/list racket/string "main.rkt" "model.rkt" "http.rkt" web-server/http net/url)
+(provide api-operation make-api-app openapi-document current-api-query)
+(define current-api-query (make-parameter (hasheq)))
+(struct operation (method path id summary input output status handler query) #:transparent)
 (define methods '(#"GET" #"POST" #"PUT" #"PATCH" #"DELETE" #"HEAD" #"OPTIONS"))
 (define (api-operation method path id handler #:summary [summary ""]
-                       #:input [input #f] #:output [output #f] #:status [status 200])
+                       #:input [input #f] #:output [output #f] #:status [status 200] #:query [query #f])
   (unless (and (member method methods) (string? path)
                (regexp-match? #px"^/(?:[A-Za-z0-9._~-]+|:[A-Za-z_][A-Za-z0-9_-]*)(?:/(?:[A-Za-z0-9._~-]+|:[A-Za-z_][A-Za-z0-9_-]*))*$|^/$" path)
                (string? id) (regexp-match? #rx"^[A-Za-z_][A-Za-z0-9_-]*$" id)
                (string? summary) (or (not input) (model? input))
                (or (not output) (model? output))
+               (or (not query) (and (model? query)
+                 (andmap (lambda (f) (regexp-match? #rx"^[A-Za-z_][A-Za-z0-9_-]*$" (symbol->string (field-name f)))) (model-fields query))))
                (memv status '(200 201 202 204))
                (or (not output) (not (= status 204)))
                (or (not input) (member method '(#"POST" #"PUT" #"PATCH")))
@@ -18,7 +21,7 @@
   (define params (path-parameters path))
   (unless (= (length params) (length (remove-duplicates params)))
     (error 'api-operation "duplicate path parameter"))
-  (operation method path id summary input output status handler))
+  (operation method path id summary input output status handler query))
 (define (path-parameters path)
   (for/list ([part (in-list (string-split path "/"))] #:when (string-prefix? part ":"))
     (substring part 1)))
@@ -41,6 +44,31 @@
     (unless (equal? previous path) (error 'openapi-document "inconsistent path parameter names"))
     (hash-set! templates shape path))
   (void))
+;; A declared query model is strict: no unknown or repeated keys.
+(define (parse-query req schema)
+  (if (not schema) (hasheq)
+      (let/ec reject
+        (define fields (model-fields schema))
+        (define pairs (url-query (request-uri req)))
+        (when (> (length pairs) 128) (reject #f))
+        (define parsed
+          (for/fold ([out (hasheq)]) ([p (in-list pairs)])
+            (define name (car p))
+            (define raw (cdr p))
+            (define f (findf (lambda (f) (eq? name (field-name f))) fields))
+            (unless (and f (string? raw) (<= (string-length raw) 4096)
+                         (not (hash-has-key? out name))) (reject #f))
+            (define v
+              (case (field-type f)
+                [(string) raw]
+                [(boolean) (cond [(equal? raw "true") #t] [(equal? raw "false") #f] [else (reject #f)])]
+                [(integer) (if (regexp-match? #px"^-?(?:0|[1-9][0-9]*)$" raw)
+                               (string->number raw) (reject #f))]
+                [(number) (if (regexp-match? #px"^-?(?:0|[1-9][0-9]*)(?:[.][0-9]+)?(?:[eE][+-]?[0-9]+)?$" raw)
+                              (string->number raw) (reject #f))]
+                [else (reject #f)]))
+            (hash-set out name v)))
+        (if (null? (validate-model schema parsed)) parsed #f))))
 (define (operation-document op)
   (define response-schema
     (cond [(operation-output op)
@@ -49,8 +77,15 @@
           [else (hasheq 'description "Success" 'content (json-content (hasheq)))]))
   (define base
     (hasheq 'operationId (operation-id op) 'summary (operation-summary op)
-            'parameters (for/list ([name (in-list (path-parameters (operation-path op)))])
-                          (hasheq 'name name 'in "path" 'required #t 'schema (hasheq 'type "string")))
+            'parameters (append
+                          (for/list ([name (in-list (path-parameters (operation-path op)))])
+                            (hasheq 'name name 'in "path" 'required #t 'schema (hasheq 'type "string")))
+                          (if (operation-query op)
+                            (for/list ([f (in-list (model-fields (operation-query op)))])
+                              (hasheq 'name (symbol->string (field-name f)) 'in "query"
+                                'required (field-required? f)
+                                'schema (hasheq 'type (symbol->string (field-type f)))))
+                            '()))
             'responses (hasheq (string->symbol (number->string (operation-status op))) response-schema
                                '|400| (hasheq 'description "Invalid input")
                                '|500| (hasheq 'description "Internal error"))))
@@ -73,16 +108,18 @@
   (route (operation-method op) (operation-path op)
          (lambda (req)
            (define input (operation-input op))
+           (define query (parse-query req (operation-query op)))
            (define data (if input
                             (with-handlers ([exn:fail? (lambda (_) #f)])
                               (request-json req))
                             (hasheq)))
            (cond
+             [(not query) (json-response (hasheq 'error "invalid-query") #:code 400)]
              [(not (hash? data)) (json-response (hasheq 'error "invalid-json") #:code 400)]
              [(and input (pair? (validate-model input data)))
               (json-response (hasheq 'error "invalid-input" 'details (validate-model input data)) #:code 400)]
              [else
-              (define result ((operation-handler op) req data))
+              (define result (parameterize ([current-api-query query]) ((operation-handler op) req data)))
               (cond
                 [(and (operation-output op)
                       (not (and (hash? result) (null? (validate-model (operation-output op) result)))))
@@ -117,6 +154,15 @@
   (check-equal? (response-code (app (req #"POST" "/tasks/42" (hasheq 'title "task")))) 201)
   (check-equal? (response-code (app (req #"POST" "/tasks/42" (hasheq)))) 400)
   (check-equal? (response-code (app (req #"POST" "/tasks/42" (hasheq 'title "task" 'extra #t)))) 400)
+  (define-model filters [limit integer #t] [active boolean #f] [weight number #f])
+  (define query-op (api-operation #"GET" "/search" "search"
+    (lambda (_ data) (current-api-query)) #:query filters))
+  (define query-app (make-api-app (list query-op)))
+  (define good (query-app (req #"GET" "/search?limit=20&active=false&weight=1.5" #f)))
+  (check-equal? (response-code good) 200)
+  (for ([path '("/search" "/search?limit=abc" "/search?limit=1&limit=2" "/search?limit=1&extra=x" "/search?limit=1&active=yes" "/search?limit=1&weight=+inf.0")])
+    (check-equal? (response-code (query-app (req #"GET" path #f))) 400))
+  (check-equal? (hash-count (current-api-query)) 0)
   (define bad (make-api-app (list (api-operation #"GET" "/bad" "bad" (lambda (_ data) (hasheq)) #:output output))))
   (check-equal? (response-code (bad (req #"GET" "/bad" #f))) 500)
   (define empty (make-api-app (list (api-operation #"DELETE" "/tasks/:id" "deleteTask"
