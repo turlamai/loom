@@ -1,11 +1,12 @@
 #lang racket/base
 (require racket/list racket/string "main.rkt" "model.rkt" "http.rkt" web-server/http net/url)
-(provide api-operation make-api-app openapi-document current-api-query)
+(provide api-operation make-api-app openapi-document current-api-query api-result api-result?)
 (define current-api-query (make-parameter (hasheq)))
-(struct operation (method path id summary input output status handler query) #:transparent)
+(struct operation (method path id summary input output status handler query responses) #:transparent)
+(struct api-result (status body) #:transparent)
 (define methods '(#"GET" #"POST" #"PUT" #"PATCH" #"DELETE" #"HEAD" #"OPTIONS"))
 (define (api-operation method path id handler #:summary [summary ""]
-                       #:input [input #f] #:output [output #f] #:status [status 200] #:query [query #f])
+                       #:input [input #f] #:output [output #f] #:status [status 200] #:query [query #f] #:responses [responses (hasheq)])
   (unless (and (member method methods) (string? path)
                (regexp-match? #px"^/(?:[A-Za-z0-9._~-]+|:[A-Za-z_][A-Za-z0-9_-]*)(?:/(?:[A-Za-z0-9._~-]+|:[A-Za-z_][A-Za-z0-9_-]*))*$|^/$" path)
                (string? id) (regexp-match? #rx"^[A-Za-z_][A-Za-z0-9_-]*$" id)
@@ -14,6 +15,10 @@
                (or (not query) (and (model? query)
                  (andmap (lambda (f) (regexp-match? #rx"^[A-Za-z_][A-Za-z0-9_-]*$" (symbol->string (field-name f)))) (model-fields query))))
                (memv status '(200 201 202 204))
+               (hash? responses)
+               (for/and ([(code schema) (in-hash responses)])
+                 (and (exact-integer? code) (<= 400 code 499) (not (= code 400))
+                      (model? schema)))
                (or (not output) (not (= status 204)))
                (or (not input) (member method '(#"POST" #"PUT" #"PATCH")))
                (procedure? handler) (procedure-arity-includes? handler 2))
@@ -21,7 +26,8 @@
   (define params (path-parameters path))
   (unless (= (length params) (length (remove-duplicates params)))
     (error 'api-operation "duplicate path parameter"))
-  (operation method path id summary input output status handler query))
+  (operation method path id summary input output status handler query
+             (for/hasheq ([(code schema) (in-hash responses)]) (values code schema))))
 (define (path-parameters path)
   (for/list ([part (in-list (string-split path "/"))] #:when (string-prefix? part ":"))
     (substring part 1)))
@@ -86,9 +92,12 @@
                                 'required (field-required? f)
                                 'schema (hasheq 'type (symbol->string (field-type f)))))
                             '()))
-            'responses (hasheq (string->symbol (number->string (operation-status op))) response-schema
+            'responses (for/fold ([out (hasheq (string->symbol (number->string (operation-status op))) response-schema
                                '|400| (hasheq 'description "Invalid input")
-                               '|500| (hasheq 'description "Internal error"))))
+                               '|500| (hasheq 'description "Internal error"))])
+                         ([(code schema) (in-hash (operation-responses op))])
+                         (hash-set out (string->symbol (number->string code))
+                           (hasheq 'description "Application error" 'content (json-content (model-schema schema)))))))
   (if (operation-input op)
       (hash-set base 'requestBody (hasheq 'required #t 'content (json-content (model-schema (operation-input op)))))
       base))
@@ -121,6 +130,13 @@
              [else
               (define result (parameterize ([current-api-query query]) ((operation-handler op) req data)))
               (cond
+                [(api-result? result)
+                 (define code (api-result-status result))
+                 (define body (api-result-body result))
+                 (define schema (hash-ref (operation-responses op) code #f))
+                 (if (and schema (hash? body) (null? (validate-model schema body)))
+                     (json-response body #:code code)
+                     (json-response (hasheq 'error "invalid-response") #:code 500))]
                 [(and (operation-output op)
                       (not (and (hash? result) (null? (validate-model (operation-output op) result)))))
                  (json-response (hasheq 'error "invalid-response") #:code 500)]
@@ -176,6 +192,30 @@
   (for ([path '("/search" "/search?limit=abc" "/search?limit=1&limit=2" "/search?limit=1&extra=x" "/search?limit=1&active=yes" "/search?limit=1&weight=+inf.0")])
     (check-equal? (response-code (query-app (req #"GET" path #f))) 400))
   (check-equal? (hash-count (current-api-query)) 0)
+  (define-model problem [error string #t])
+  (define response-op (api-operation #"GET" "/item/:id" "getItem"
+    (lambda (_ data)
+      (case (string->symbol (route-param "id"))
+        [(missing) (api-result 404 (hasheq 'error "missing"))]
+        [(conflict) (api-result 409 (hasheq 'error "conflict"))]
+        [(undeclared) (api-result 403 (hasheq 'error "denied"))]
+        [(invalid) (api-result 404 (hasheq 'error 42))]
+        [else (hasheq 'title "item" 'id "1")]))
+    #:output output #:responses (hasheq 404 problem 409 problem)))
+  (define response-app (make-api-app (list response-op)))
+  (define response-spec (hash-ref (hash-ref (hash-ref
+    (openapi-document (list response-op)) 'paths) '|/item/{id}|) 'get))
+  (check-equal? (hash-ref (hash-ref (hash-ref response-spec 'responses) '|404|)
+    'content) (json-content (model-schema problem)))
+  (check-equal? (response-code (response-app (req #"GET" "/item/1" #f))) 200)
+  (define missing (response-app (req #"GET" "/item/missing" #f)))
+  (check-equal? (response-code missing) 404)
+  (check-equal? (body missing) (hasheq 'error "missing"))
+  (check-equal? (response-code (response-app (req #"GET" "/item/conflict" #f))) 409)
+  (check-equal? (response-code (response-app (req #"GET" "/item/undeclared" #f))) 500)
+  (check-equal? (response-code (response-app (req #"GET" "/item/invalid" #f))) 500)
+  (check-exn exn:fail? (lambda () (api-operation #"GET" "/x" "x" (lambda (_ d) d)
+    #:responses (hasheq 400 problem))))
   (define bad (make-api-app (list (api-operation #"GET" "/bad" "bad" (lambda (_ data) (hasheq)) #:output output))))
   (check-equal? (response-code (bad (req #"GET" "/bad" #f))) 500)
   (define empty (make-api-app (list (api-operation #"DELETE" "/tasks/:id" "deleteTask"
