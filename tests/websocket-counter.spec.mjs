@@ -74,3 +74,35 @@ test("rejects a socket without an HTTP session", async ({page}) => {
   }));
   expect(code).toBe(1008);
 });
+
+test("DOM runtime binds, renders events, recovers and preserves state", async ({page}) => {
+  await page.goto(base);
+  await page.evaluate(async () => {
+    const session=JSON.parse(document.body.innerText);
+    const root=document.createElement("div");
+    root.id="socket-root";
+    document.body.replaceChildren(root);
+    // The fixture exposes a separate loopback socket port. A test-only
+    // constructor maps the logical same-origin endpoint to that listener.
+    const Native=window.WebSocket;
+    class FixtureSocket extends Native {
+      constructor(url){super("ws://127.0.0.1:18885"+new URL(url).pathname);window.lastSocket=this;}
+    }
+    window.WebSocket=FixtureSocket;
+    const {attachLiveSocket}=await import("/assets/live-socket-dom.mjs");
+    window.recoveries=0;
+    window.socketClient=attachLiveSocket(root,{endpoint:"/live",...session,
+      heartbeat:1000,onRecovered:()=>window.recoveries++,onError:()=>{}});
+    if(!await window.socketClient.connected)throw new Error("initial bind failed");
+  });
+  await expect(page.locator("#socket-root p")).toHaveText("0");
+  expect(await page.evaluate(()=>window.socketClient.dispatch("inc"))).toBe(true);
+  await expect(page.locator("#socket-root p")).toHaveText("1");
+  await page.evaluate(()=>window.lastSocket.close());
+  await expect.poll(()=>page.evaluate(()=>window.recoveries)).toBe(2);
+  await expect(page.locator("#socket-root p")).toHaveText("1");
+  expect(await page.evaluate(()=>window.socketClient.dispatch("inc"))).toBe(true);
+  await expect(page.locator("#socket-root p")).toHaveText("2");
+  await page.evaluate(()=>window.socketClient.dispose());
+  expect(await page.evaluate(()=>window.socketClient.dispatch("inc"))).toBe(false);
+});
