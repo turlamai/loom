@@ -1,5 +1,5 @@
 // One request in flight; never replay an uncertain mutation.
-export function connectLiveSocket({endpoint,id,csrf,timeout=5000,onDisconnect=()=>{}}) {
+export function connectLiveSocket({endpoint,id,csrf,timeout=5000,onDisconnect=()=>{},onInvalidate=()=>{}}) {
   const url = new URL(endpoint,location.href);
   if (url.protocol==="http:") url.protocol="ws:";
   if (url.protocol==="https:") url.protocol="wss:";
@@ -39,10 +39,11 @@ export function connectLiveSocket({endpoint,id,csrf,timeout=5000,onDisconnect=()
     ws.onerror=()=>invalidate(ws,new Error("Live socket failed"));
     ws.onmessage=e=>{
       if (socket!==ws) return;
-      if (!pending) {invalidate(ws,new Error("Unexpected message"));return;}
       let result;
       try {
         result=JSON.parse(e.data);
+        if (result && result.type==="invalidate" && Object.keys(result).length===1) {onInvalidate();return;}
+        if (!pending) throw new Error("Unexpected message");
         if (!result || !["ok","stale","unknown-event","error"].includes(result.status))
           throw new Error("Invalid live response");
       } catch(error){invalidate(ws,error);return;}
